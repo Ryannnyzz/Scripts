@@ -865,12 +865,58 @@ MiscTab:CreateToggle({
         end
     end
 })
+
+-- ======================================================
+-- BLACK SCREEN GUI (SAFE FOR RAYFIELD)
+-- ======================================================
+local BlackScreenGui = Instance.new("ScreenGui")
+BlackScreenGui.Name = "YanzBlackScreen"
+BlackScreenGui.IgnoreGuiInset = true
+BlackScreenGui.ResetOnSpawn = false
+BlackScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+BlackScreenGui.Parent = game:GetService("CoreGui") -- PENTING
+local BlackFrame = Instance.new("Frame")
+BlackFrame.Size = UDim2.new(2, 0, 2, 0) -- LEBIH BESAR DARI LAYAR
+BlackFrame.Position = UDim2.new(-0.5, 0, -0.5, 0)
+BlackFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+BlackFrame.BackgroundTransparency = 0
+BlackFrame.Visible = false
+BlackFrame.ZIndex = 1
+BlackFrame.Parent = BlackScreenGui
+local BlackScreenEnabled = false
+
+local function SetBlackScreen(state)
+    BlackScreenEnabled = state
+    BlackFrame.Visible = state
+end
+MiscTab:CreateToggle({
+    Name = "⬛ Black Screen",
+    CurrentValue = false,
+    Callback = function(value)
+        SetBlackScreen(value)
+
+        Rayfield:Notify({
+            Title = "Black Screen",
+            Content = value and "⬛ Black Screen Enabled" or "❌ Black Screen Disabled",
+            Duration = 4,
+            Image = 4483362458
+        })
+    end
+})
 -- ====== TELEPORT TAB (from dev1.lua) ======
 local TeleportTab = Window:CreateTab("🌍 Teleport", nil)
 
 TeleportTab:CreateSection("📍 Locations")
 
-for locationName, _ in pairs(LOCATIONS) do
+local sortedLocations = {}
+
+for locationName in pairs(LOCATIONS) do
+    table.insert(sortedLocations, locationName)
+end
+
+table.sort(sortedLocations)
+
+for _, locationName in ipairs(sortedLocations) do
     TeleportTab:CreateButton({
         Name = locationName,
         Callback = function()
