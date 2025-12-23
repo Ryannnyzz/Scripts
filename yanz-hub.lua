@@ -988,65 +988,224 @@ MiscTab:CreateToggle({
 local FarmTab = Window:CreateTab("⭐ Auto Event Farm", nil)
 
 FarmTab:CreateSection ("🌠 Event Fish")
--- =========================
--- TELEPORT LOCATIONS
--- =========================
-local EVENT = {
-    ["Ancient Jungle"]      = CFrame.new(-1200, 50, 900),
-    ["Christmas Island"]    = CFrame.new(589.443909, 5.080366, 1699.825439),
-    ["Christmas Island 2"]  = CFrame.new(1175.601318, 23.430645, 1550.207642),
-    ["Fisherman Island"]    = CFrame.new(99.731415, 9.531265, 2763.851074),
-    ["Fisherman Island 2"]  = CFrame.new(34.518330, 16.785484, 2830.003906),
-    ["Gift Factory"]        = CFrame.new(1023.665833, 27.430668, 1663.685547),
-    ["Travelling Merchant"] = CFrame.new(-134.409286, 3.198100, 2767.216309),
-}
--- =========================
--- COPY LOCATION NAMES (NEW VAR)
--- =========================
-local TeleportNames = {}
+-- ======================================================
+-- FLOAT PLATFORM + AUTO EVENT FARM (RAYFIELD SAFE)
+-- ======================================================
 
-for name in pairs(EVENT) do
-    table.insert(TeleportNames, name)
-end
+-- ===== SERVICES =====
+local Workspace = game:GetService("Workspace")
 
-table.sort(TeleportNames)
+-- ======================================================
+-- FLOAT PLATFORM (WALK ON AIR)
+-- ======================================================
+local floatPlatform
+local floatRunning = false
 
--- =========================
--- TELEPORT FUNCTION (SAFE)
--- =========================
-local TeleportService = {}
+local function FloatingPlatform(state)
+    floatRunning = state
 
-function TeleportService.Go(locationName)
-    local cf = EVENT[locationName]
-    if not cf then
-        warn("[Teleport] Location not found:", locationName)
+    if not state then
+        if floatPlatform then
+            floatPlatform:Destroy()
+            floatPlatform = nil
+        end
+        Rayfield:Notify({
+            Title = "Float Platform",
+            Content = "❌ Disabled",
+            Duration = 3,
+            Image = 4483362458
+        })
         return
     end
 
-    local char = player.Character or player.CharacterAdded:Wait()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp = char:WaitForChild("HumanoidRootPart")
 
-    hrp.CFrame = cf + Vector3.new(0, 5, 0)
-end
+    floatPlatform = Instance.new("Part")
+    floatPlatform.Name = "FloatPlatform"
+    floatPlatform.Size = Vector3.new(10, 1, 10)
+    floatPlatform.Anchored = true
+    floatPlatform.CanCollide = true
+    floatPlatform.Transparency = 1
+    floatPlatform.Parent = Workspace
 
--- =========================
--- TELEPORT BUTTONS
--- =========================
-for _, locationName in ipairs(TeleportNames) do
-    FarmTab:CreateButton({
-        Name = locationName,
-        Callback = function()
-            TeleportService.Go(locationName)
-
-            Rayfield:Notify({
-                Title = "Teleport",
-                Content = "[ Notify ] Done teleport to " .. locationName,
-                Duration = 5,
-                Image = 4483362458
-            })
+    task.spawn(function()
+        while floatRunning and floatPlatform and hrp and hrp.Parent do
+            pcall(function()
+                floatPlatform.Position = hrp.Position - Vector3.new(0, 3.5, 0)
+            end)
+            task.wait(0.1)
         end
+    end)
+
+    Rayfield:Notify({
+        Title = "Float Platform",
+        Content = "✅ Enabled",
+        Duration = 3,
+        Image = 4483362458
     })
 end
+
+MiscTab:CreateToggle({
+    Name = "🛸 Float Platform",
+    CurrentValue = false,
+    Callback = FloatingPlatform
+})
+
+-- ======================================================
+-- EVENT FARM SYSTEM
+-- ======================================================
+local eventMap = {
+    ["Shark Hunt"]       = { name = "Shark Hunt", part = "Color" },
+    ["Ghost Shark Hunt"] = { name = "Ghost Shark Hunt", part = "Part" },
+    ["Worm Hunt"]        = { name = "Model", part = "Part" },
+    ["Ghost Worm"]       = { name = "Model", part = "Part" },
+    ["Megalodon Hunt"]   = { name = "Megalodon Hunt", part = "Color" },
+}
+
+local autoEvent = false
+local selectedEvent = nil
+local savedCFrame = nil
+local alreadyTeleported = false
+local teleportTime = nil
+
+-- ======================================================
+-- EVENT BLOCK (ANTI FALL)
+-- ======================================================
+local eventBlock
+
+local function ToggleEventBlock(state)
+    if not state then
+        if eventBlock then
+            eventBlock:Destroy()
+            eventBlock = nil
+        end
+        return
+    end
+
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    eventBlock = Instance.new("Part")
+    eventBlock.Size = Vector3.new(6, 1, 6)
+    eventBlock.Anchored = true
+    eventBlock.CanCollide = true
+    eventBlock.Transparency = 1
+    eventBlock.Parent = Workspace
+
+    task.spawn(function()
+        while autoEvent and eventBlock and hrp and hrp.Parent do
+            eventBlock.Position = hrp.Position - Vector3.new(0, 3, 0)
+            task.wait(0.2)
+        end
+    end)
+end
+
+-- ======================================================
+-- FIND EVENT PART
+-- ======================================================
+local function getPartRecursive(obj)
+    if obj:IsA("BasePart") then return obj end
+    for _, v in ipairs(obj:GetChildren()) do
+        local p = getPartRecursive(v)
+        if p then return p end
+    end
+end
+
+local function findEvent(eventName)
+    local rings = Workspace:FindFirstChild("!!! MENU RINGS")
+    if not rings then return end
+
+    local props = rings:FindFirstChild("Props")
+    if not props then return end
+
+    local data = eventMap[eventName]
+    if not data then return end
+
+    local model = props:FindFirstChild(data.name)
+    if not model then return end
+
+    return model:FindFirstChild(data.part or "") or model.PrimaryPart or getPartRecursive(model)
+end
+
+-- ======================================================
+-- AUTO EVENT LOOP
+-- ======================================================
+task.spawn(function()
+    while true do
+        if autoEvent and selectedEvent then
+            local targetPart = findEvent(selectedEvent)
+
+            if targetPart and not alreadyTeleported then
+                local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                local hrp = char:WaitForChild("HumanoidRootPart")
+
+                savedCFrame = hrp.CFrame
+                hrp.CFrame = targetPart.CFrame + Vector3.new(0, 15, 0)
+
+                ToggleEventBlock(true)
+
+                alreadyTeleported = true
+                teleportTime = tick()
+
+                Rayfield:Notify({
+                    Title = "Event Farm",
+                    Content = "Teleported to " .. selectedEvent,
+                    Duration = 4,
+                    Image = 4483362458
+                })
+
+            elseif alreadyTeleported then
+                if not targetPart or (tick() - teleportTime >= 900) then
+                    if savedCFrame and LocalPlayer.Character then
+                        LocalPlayer.Character.HumanoidRootPart.CFrame = savedCFrame
+                    end
+
+                    ToggleEventBlock(false)
+                    alreadyTeleported = false
+                    teleportTime = nil
+
+                    Rayfield:Notify({
+                        Title = "Event Farm",
+                        Content = "Returned to original position",
+                        Duration = 4,
+                        Image = 4483362458
+                    })
+                end
+            end
+        end
+        task.wait(1)
+    end
+end)
+
+-- ======================================================
+-- RAYFIELD UI (EVENT SELECT + TOGGLE)
+-- ======================================================
+FarmTab:CreateDropdown({
+    Name = "Select Event",
+    Options = {
+        "Shark Hunt",
+        "Ghost Shark Hunt",
+        "Worm Hunt",
+        "Ghost Worm",
+        "Megalodon Hunt"
+    },
+    CurrentOption = "",
+    Callback = function(value)
+        selectedEvent = value
+    end
+})
+
+FarmTab:CreateToggle({
+    Name = "⭐ Auto Event Farm",
+    CurrentValue = false,
+    Callback = function(value)
+        autoEvent = value
+        if not value then
+            ToggleEventBlock(false)
+        end
+    end
+})
 -- ======================================================
 -- AUTO BUY WEATHER (RAYFIELD SAFE)
 -- ======================================================
