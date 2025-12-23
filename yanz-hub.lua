@@ -1206,15 +1206,16 @@ FarmTab:CreateToggle({
         end
     end
 })
--- ======================================================
--- AUTO BUY WEATHER (RAYFIELD SAFE)
--- ======================================================
-
+-- ===============================
+-- 🌦️ AUTO BUY WEATHER (RAYFIELD)
+-- ===============================
 FarmTab:CreateSection("🌦️ Auto Buy Weather")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Remote
+-- ===============================
+-- REMOTE
+-- ===============================
 local PurchaseWeatherRemote = ReplicatedStorage
     :WaitForChild("Packages")
     :WaitForChild("_Index")
@@ -1222,10 +1223,10 @@ local PurchaseWeatherRemote = ReplicatedStorage
     :WaitForChild("net")
     :WaitForChild("RF/PurchaseWeatherEvent")
 
--- Default duration (15 menit)
-local WEATHER_DURATION = 900
-
--- Weather list
+-- ===============================
+-- CONFIG
+-- ===============================
+local WEATHER_DURATION = 900 -- 15 menit
 local WeatherList = {
     "Storm",
     "Cloudy",
@@ -1234,84 +1235,91 @@ local WeatherList = {
     "Radiant"
 }
 
--- State
-local SelectedWeather = {}
-local WeatherButtons = {}
+-- ===============================
+-- STATE
+-- ===============================
+local SelectedWeathers = {} -- max 3
 local AutoBuyEnabled = false
 local AutoBuyThread = nil
 
--- =========================
+-- ===============================
 -- HELPER
--- =========================
-local function countSelected()
-    local c = 0
-    for _ in pairs(SelectedWeather) do
-        c += 1
-    end
-    return c
+-- ===============================
+local function isSelected(weather)
+    return table.find(SelectedWeathers, weather) ~= nil
 end
 
-local function updateButton(weather)
-    local btn = WeatherButtons[weather]
-    if not btn then return end
-
-    if SelectedWeather[weather] then
-        btn:Set("Name", "✅ " .. weather)
-    else
-        btn:Set("Name", "☁️ " .. weather)
-    end
-end
-
--- =========================
--- WEATHER SELECT BUTTONS
--- =========================
-for _, weather in ipairs(WeatherList) do
-    WeatherButtons[weather] = FarmTab:CreateButton({
-        Name = "☁️ " .. weather,
-        Callback = function()
-            if SelectedWeather[weather] then
-                -- Unselect
-                SelectedWeather[weather] = nil
-                updateButton(weather)
-
-                Rayfield:Notify({
-                    Title = "Auto Buy Weather",
-                    Content = weather .. " unselected",
-                    Duration = 3
-                })
-            else
-                -- Limit 3
-                if countSelected() >= 3 then
-                    Rayfield:Notify({
-                        Title = "Limit Reached",
-                        Content = "Max 3 weather can be selected",
-                        Duration = 3
-                    })
-                    return
-                end
-
-                SelectedWeather[weather] = true
-                updateButton(weather)
-
-                Rayfield:Notify({
-                    Title = "Auto Buy Weather",
-                    Content = weather .. " selected",
-                    Duration = 3
-                })
-            end
+local function removeSelected(weather)
+    for i, v in ipairs(SelectedWeathers) do
+        if v == weather then
+            table.remove(SelectedWeathers, i)
+            break
         end
-    })
+    end
 end
 
--- =========================
+local function getDropdownList()
+    local list = {}
+    for _, w in ipairs(WeatherList) do
+        if isSelected(w) then
+            table.insert(list, "[ Selected ] " .. w)
+        else
+            table.insert(list, w)
+        end
+    end
+    return list
+end
+
+-- ===============================
+-- DROPDOWN WEATHER SELECT
+-- ===============================
+local WeatherDropdown
+WeatherDropdown = FarmTab:CreateDropdown({
+    Name = "Select Weather (Max 3)",
+    Options = getDropdownList(),
+    CurrentOption = {},
+    MultipleOptions = false,
+    Callback = function(value)
+        local weather = value:gsub("%[ Selected %] ", "")
+
+        if isSelected(weather) then
+            -- CANCEL SELECT
+            removeSelected(weather)
+        else
+            -- LIMIT 3
+            if #SelectedWeathers >= 3 then
+                Rayfield:Notify({
+                    Title = "Auto Buy Weather",
+                    Content = "Maximum 3 weather can be selected",
+                    Duration = 3
+                })
+                return
+            end
+            table.insert(SelectedWeathers, weather)
+        end
+
+        -- REFRESH DROPDOWN
+        WeatherDropdown:Refresh(getDropdownList(), true)
+
+        Rayfield:Notify({
+            Title = "Auto Buy Weather",
+            Content = (#SelectedWeathers > 0)
+                and ("Selected: " .. table.concat(SelectedWeathers, ", "))
+                or "No weather selected",
+            Duration = 3
+        })
+    end
+})
+
+-- ===============================
 -- AUTO BUY LOOP
--- =========================
+-- ===============================
 local function startAutoBuy()
     if AutoBuyThread then return end
 
     AutoBuyThread = task.spawn(function()
         while AutoBuyEnabled do
-            for weather in pairs(SelectedWeather) do
+            for _, weather in ipairs(SelectedWeathers) do
                 if not AutoBuyEnabled then break end
 
                 pcall(function()
@@ -1324,11 +1332,10 @@ local function startAutoBuy()
                     })
                 end)
 
-                -- small delay antar weather (anti spam)
-                task.wait(3)
+                task.wait(3) -- anti spam
             end
 
-            -- tunggu duration default (15 menit)
+            -- tunggu duration default weather
             task.wait(WEATHER_DURATION)
         end
     end)
@@ -1339,9 +1346,9 @@ local function stopAutoBuy()
     AutoBuyThread = nil
 end
 
--- =========================
+-- ===============================
 -- TOGGLE AUTO BUY
--- =========================
+-- ===============================
 FarmTab:CreateToggle({
     Name = "⚡ Auto Buy Weather",
     CurrentValue = false,
@@ -1349,7 +1356,7 @@ FarmTab:CreateToggle({
         AutoBuyEnabled = value
 
         if value then
-            if countSelected() == 0 then
+            if #SelectedWeathers == 0 then
                 Rayfield:Notify({
                     Title = "Auto Buy Weather",
                     Content = "Select at least 1 weather first",
@@ -1377,33 +1384,54 @@ FarmTab:CreateToggle({
         end
     end
 })
+
+-- ===============================
+-- INFO
+-- ===============================
+FarmTab:CreateParagraph({
+    Title = "Info",
+    Content =
+        "• Klik weather = Select\n" ..
+        "• Klik lagi = Cancel Select\n" ..
+        "• Maksimal 3 Weather\n" ..
+        "• Auto Buy mengikuti duration default (15 menit)"
+})
 -- ====== TELEPORT TAB (from dev1.lua) ======
 local TeleportTab = Window:CreateTab("🌍 Teleport", nil)
-
 TeleportTab:CreateSection("📍 Locations")
 
-local sortedLocations = {}
+-- =========================
+-- SORT LOCATION NAMES
+-- =========================
+local SortedLocations = {}
 
 for locationName in pairs(LOCATIONS) do
-    table.insert(sortedLocations, locationName)
+    table.insert(SortedLocations, locationName)
 end
 
-table.sort(sortedLocations)
+table.sort(SortedLocations)
 
-for _, locationName in ipairs(sortedLocations) do
-    TeleportTab:CreateButton({
-        Name = locationName,
-        Callback = function()
-            Teleport.to(locationName)
-            Rayfield:Notify({
-                Title = "Teleport",
-                Content = "[ Notify ] Done teleport to " .. locationName,
-                Duration = 5,
-                Image = 4483362458
-            })
-        end
-    })
-end
+-- =========================
+-- DROPDOWN TELEPORT
+-- =========================
+TeleportTab:CreateDropdown({
+    Name = "Select Location",
+    Options = SortedLocations,
+    CurrentOption = nil,
+    MultipleOptions = false,
+    Callback = function(locationName)
+        if not locationName or locationName == "" then return end
+
+        Teleport.to(locationName)
+
+        Rayfield:Notify({
+            Title = "Teleport",
+            Content = "[ Notify ] Done teleport to " .. locationName,
+            Duration = 5,
+            Image = 4483362458
+        })
+    end
+})
 
 -- ===============================
 -- COPY POSITION FEATURE
