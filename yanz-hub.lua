@@ -1213,175 +1213,99 @@ FarmTab:CreateSection("🌦️ Auto Buy Weather")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- ===============================
--- REMOTE
--- ===============================
-local PurchaseWeatherRemote = ReplicatedStorage
-    :WaitForChild("Packages")
+local PurchaseWeatherRemote =
+    ReplicatedStorage:WaitForChild("Packages")
     :WaitForChild("_Index")
     :WaitForChild("sleitnick_net@0.2.0")
     :WaitForChild("net")
     :WaitForChild("RF/PurchaseWeatherEvent")
 
--- ===============================
--- CONFIG
--- ===============================
-local WEATHER_DURATION = 900 -- 15 menit
-local WeatherList = {
-    "Storm",
-    "Cloudy",
-    "Snow",
-    "Wind",
-    "Radiant"
-}
+local WEATHER_DURATION = 900
 
--- ===============================
--- STATE
--- ===============================
-local SelectedWeathers = {} -- max 3
+local WeatherList = { "Storm", "Cloudy", "Snow", "Wind", "Radiant" }
+local SelectedWeather = {}
 local AutoBuyEnabled = false
-local AutoBuyThread = nil
 
--- ===============================
--- HELPER
--- ===============================
-local function isSelected(weather)
-    return table.find(SelectedWeathers, weather) ~= nil
-end
-
-local function removeSelected(weather)
-    for i, v in ipairs(SelectedWeathers) do
-        if v == weather then
-            table.remove(SelectedWeathers, i)
-            break
-        end
+local function getSelectedList()
+    local t = {}
+    for w in pairs(SelectedWeather) do
+        table.insert(t, w)
     end
+    return t
 end
 
-local function getDropdownList()
-    local list = {}
-    for _, w in ipairs(WeatherList) do
-        if isSelected(w) then
-            table.insert(list, "[ Selected ] " .. w)
-        else
-            table.insert(list, w)
-        end
-    end
-    return list
-end
-
--- ===============================
--- DROPDOWN WEATHER SELECT
--- ===============================
-local WeatherDropdown
-WeatherDropdown = FarmTab:CreateDropdown({
+FarmTab:CreateDropdown({
     Name = "Select Weather (Max 3)",
-    Options = getDropdownList(),
+    Options = WeatherList,
     CurrentOption = {},
-    MultipleOptions = false,
-    Callback = function(value)
-        local weather = value:gsub("%[ Selected %] ", "")
+    MultiSelection = true,
+    Callback = function(selected)
+        pcall(function()
+            SelectedWeather = {}
 
-        if isSelected(weather) then
-            -- CANCEL SELECT
-            removeSelected(weather)
-        else
-            -- LIMIT 3
-            if #SelectedWeathers >= 3 then
+            if #selected > 3 then
                 Rayfield:Notify({
-                    Title = "Auto Buy Weather",
-                    Content = "Maximum 3 weather can be selected",
+                    Title = "Limit",
+                    Content = "Max 3 weather only",
                     Duration = 3
                 })
                 return
             end
-            table.insert(SelectedWeathers, weather)
-        end
 
-        -- REFRESH DROPDOWN
-        WeatherDropdown:Refresh(getDropdownList(), true)
-
-        Rayfield:Notify({
-            Title = "Auto Buy Weather",
-            Content = (#SelectedWeathers > 0)
-                and ("Selected: " .. table.concat(SelectedWeathers, ", "))
-                or "No weather selected",
-            Duration = 3
-        })
+            for _, w in ipairs(selected) do
+                SelectedWeather[w] = true
+            end
+        end)
     end
 })
 
--- ===============================
--- AUTO BUY LOOP
--- ===============================
-local function startAutoBuy()
-    if AutoBuyThread then return end
+task.spawn(function()
+    while true do
+        if AutoBuyEnabled then
+            local list = getSelectedList()
+            if #list == 0 then
+                AutoBuyEnabled = false
+            end
 
-    AutoBuyThread = task.spawn(function()
-        while AutoBuyEnabled do
-            for _, weather in ipairs(SelectedWeathers) do
+            for _, weather in ipairs(list) do
                 if not AutoBuyEnabled then break end
 
                 pcall(function()
                     PurchaseWeatherRemote:InvokeServer(weather)
-
-                    Rayfield:Notify({
-                        Title = "Weather Purchased",
-                        Content = "Activated " .. weather,
-                        Duration = 4
-                    })
                 end)
 
-                task.wait(3) -- anti spam
+                task.wait(3)
             end
 
-            -- tunggu duration default weather
             task.wait(WEATHER_DURATION)
+        else
+            task.wait(1)
         end
-    end)
-end
+    end
+end)
 
-local function stopAutoBuy()
-    AutoBuyEnabled = false
-    AutoBuyThread = nil
-end
-
--- ===============================
--- TOGGLE AUTO BUY
--- ===============================
 FarmTab:CreateToggle({
     Name = "⚡ Auto Buy Weather",
     CurrentValue = false,
     Callback = function(value)
-        AutoBuyEnabled = value
-
-        if value then
-            if #SelectedWeathers == 0 then
+        pcall(function()
+            if value and next(SelectedWeather) == nil then
                 Rayfield:Notify({
                     Title = "Auto Buy Weather",
-                    Content = "Select at least 1 weather first",
-                    Duration = 4
+                    Content = "Select weather first",
+                    Duration = 3
                 })
-                AutoBuyEnabled = false
                 return
             end
 
-            startAutoBuy()
+            AutoBuyEnabled = value
 
             Rayfield:Notify({
                 Title = "Auto Buy Weather",
-                Content = "Auto Buy ENABLED",
-                Duration = 4
+                Content = value and "ENABLED" or "DISABLED",
+                Duration = 3
             })
-        else
-            stopAutoBuy()
-
-            Rayfield:Notify({
-                Title = "Auto Buy Weather",
-                Content = "Auto Buy DISABLED",
-                Duration = 4
-            })
-        end
+        end)
     end
 })
 
@@ -1397,39 +1321,38 @@ FarmTab:CreateParagraph({
         "• Auto Buy mengikuti duration default (15 menit)"
 })
 -- ====== TELEPORT TAB (from dev1.lua) ======
+
 local TeleportTab = Window:CreateTab("🌍 Teleport", nil)
 TeleportTab:CreateSection("📍 Locations")
 
--- =========================
--- SORT LOCATION NAMES
--- =========================
-local SortedLocations = {}
-
-for locationName in pairs(LOCATIONS) do
-    table.insert(SortedLocations, locationName)
+local LocationNames = {}
+for name in pairs(LOCATIONS) do
+    table.insert(LocationNames, name)
 end
+table.sort(LocationNames)
 
-table.sort(SortedLocations)
-
--- =========================
--- DROPDOWN TELEPORT
--- =========================
 TeleportTab:CreateDropdown({
     Name = "Select Location",
-    Options = SortedLocations,
+    Options = LocationNames,
     CurrentOption = nil,
-    MultipleOptions = false,
     Callback = function(locationName)
-        if not locationName or locationName == "" then return end
+        if not locationName then return end
 
-        Teleport.to(locationName)
+        pcall(function()
+            local cf = LOCATIONS[locationName]
+            if not cf then return end
 
-        Rayfield:Notify({
-            Title = "Teleport",
-            Content = "[ Notify ] Done teleport to " .. locationName,
-            Duration = 5,
-            Image = 4483362458
-        })
+            local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local hrp = char:WaitForChild("HumanoidRootPart")
+
+            hrp.CFrame = cf + Vector3.new(0, 5, 0)
+
+            Rayfield:Notify({
+                Title = "Teleport",
+                Content = "Done teleport to " .. locationName,
+                Duration = 4
+            })
+        end)
     end
 })
 
