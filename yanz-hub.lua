@@ -651,6 +651,88 @@ MainTab:CreateInput({
         end
     end
 })
+-- ======================================================
+-- DISABLE GAME ANIMATIONS (RAYFIELD SAFE)
+-- ======================================================
+local stopAnimConnections = {}
+local animationDisabled = false
+
+local function disconnectAll()
+    for _, conn in ipairs(stopAnimConnections) do
+        pcall(function()
+            conn:Disconnect()
+        end)
+    end
+    table.clear(stopAnimConnections)
+end
+
+local function hookAnimator(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then return end
+
+    -- stop all current animations
+    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+        pcall(function()
+            track:Stop(0)
+        end)
+    end
+
+    -- block future animations
+    local conn = animator.AnimationPlayed:Connect(function(track)
+        task.defer(function()
+            if animationDisabled then
+                pcall(function()
+                    track:Stop(0)
+                end)
+            end
+        end)
+    end)
+
+    table.insert(stopAnimConnections, conn)
+end
+
+local function setGameAnimationsEnabled(state)
+    animationDisabled = state
+    disconnectAll()
+
+    if state then
+        local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        hookAnimator(character)
+
+        -- re-hook after respawn
+        local respawnConn
+        respawnConn = LocalPlayer.CharacterAdded:Connect(function(char)
+            if animationDisabled then
+                task.wait(1)
+                hookAnimator(char)
+            else
+                respawnConn:Disconnect()
+            end
+        end)
+
+        table.insert(stopAnimConnections, respawnConn)
+    end
+end
+
+MainTab:CreateToggle({
+    Name = "⛔ Disable Game Animations",
+    CurrentValue = false,
+    Callback = function(value)
+        setGameAnimationsEnabled(value)
+
+        Rayfield:Notify({
+            Title = "Animation Control",
+            Content = value
+                and "⛔ All game animations disabled"
+                or "▶ Game animations enabled",
+            Duration = 4,
+            Image = 4483362458
+        })
+    end
+})
 
 MainTab:CreateSection("Auto Sell")
 
@@ -901,6 +983,239 @@ MiscTab:CreateToggle({
             Duration = 4,
             Image = 4483362458
         })
+    end
+})
+local FarmTab = Window:CreateTab("⭐ Auto Event Farm", nil)
+
+FarmTab:CreateSection ("🌠 Event Fish")
+-- =========================
+-- TELEPORT LOCATIONS
+-- =========================
+local EVENT = {
+    ["Ancient Jungle"]      = CFrame.new(-1200, 50, 900),
+    ["Christmas Island"]    = CFrame.new(589.443909, 5.080366, 1699.825439),
+    ["Christmas Island 2"]  = CFrame.new(1175.601318, 23.430645, 1550.207642),
+    ["Fisherman Island"]    = CFrame.new(99.731415, 9.531265, 2763.851074),
+    ["Fisherman Island 2"]  = CFrame.new(34.518330, 16.785484, 2830.003906),
+    ["Gift Factory"]        = CFrame.new(1023.665833, 27.430668, 1663.685547),
+    ["Travelling Merchant"] = CFrame.new(-134.409286, 3.198100, 2767.216309),
+}
+-- =========================
+-- COPY LOCATION NAMES (NEW VAR)
+-- =========================
+local TeleportNames = {}
+
+for name in pairs(EVENT) do
+    table.insert(TeleportNames, name)
+end
+
+table.sort(TeleportNames)
+
+-- =========================
+-- TELEPORT FUNCTION (SAFE)
+-- =========================
+local TeleportService = {}
+
+function TeleportService.Go(locationName)
+    local cf = EVENT[locationName]
+    if not cf then
+        warn("[Teleport] Location not found:", locationName)
+        return
+    end
+
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+
+    hrp.CFrame = cf + Vector3.new(0, 5, 0)
+end
+
+-- =========================
+-- TELEPORT BUTTONS
+-- =========================
+for _, locationName in ipairs(TeleportNames) do
+    FarmTab:CreateButton({
+        Name = locationName,
+        Callback = function()
+            TeleportService.Go(locationName)
+
+            Rayfield:Notify({
+                Title = "Teleport",
+                Content = "[ Notify ] Done teleport to " .. locationName,
+                Duration = 5,
+                Image = 4483362458
+            })
+        end
+    })
+end
+-- ======================================================
+-- AUTO BUY WEATHER (RAYFIELD SAFE)
+-- ======================================================
+
+FarmTab:CreateSection("🌦️ Auto Buy Weather")
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Remote
+local PurchaseWeatherRemote = ReplicatedStorage
+    :WaitForChild("Packages")
+    :WaitForChild("_Index")
+    :WaitForChild("sleitnick_net@0.2.0")
+    :WaitForChild("net")
+    :WaitForChild("RF/PurchaseWeatherEvent")
+
+-- Default duration (15 menit)
+local WEATHER_DURATION = 900
+
+-- Weather list
+local WeatherList = {
+    "Storm",
+    "Cloudy",
+    "Snow",
+    "Wind",
+    "Radiant"
+}
+
+-- State
+local SelectedWeather = {}
+local WeatherButtons = {}
+local AutoBuyEnabled = false
+local AutoBuyThread = nil
+
+-- =========================
+-- HELPER
+-- =========================
+local function countSelected()
+    local c = 0
+    for _ in pairs(SelectedWeather) do
+        c += 1
+    end
+    return c
+end
+
+local function updateButton(weather)
+    local btn = WeatherButtons[weather]
+    if not btn then return end
+
+    if SelectedWeather[weather] then
+        btn:Set("Name", "✅ " .. weather)
+    else
+        btn:Set("Name", "☁️ " .. weather)
+    end
+end
+
+-- =========================
+-- WEATHER SELECT BUTTONS
+-- =========================
+for _, weather in ipairs(WeatherList) do
+    WeatherButtons[weather] = FarmTab:CreateButton({
+        Name = "☁️ " .. weather,
+        Callback = function()
+            if SelectedWeather[weather] then
+                -- Unselect
+                SelectedWeather[weather] = nil
+                updateButton(weather)
+
+                Rayfield:Notify({
+                    Title = "Auto Buy Weather",
+                    Content = weather .. " unselected",
+                    Duration = 3
+                })
+            else
+                -- Limit 3
+                if countSelected() >= 3 then
+                    Rayfield:Notify({
+                        Title = "Limit Reached",
+                        Content = "Max 3 weather can be selected",
+                        Duration = 3
+                    })
+                    return
+                end
+
+                SelectedWeather[weather] = true
+                updateButton(weather)
+
+                Rayfield:Notify({
+                    Title = "Auto Buy Weather",
+                    Content = weather .. " selected",
+                    Duration = 3
+                })
+            end
+        end
+    })
+end
+
+-- =========================
+-- AUTO BUY LOOP
+-- =========================
+local function startAutoBuy()
+    if AutoBuyThread then return end
+
+    AutoBuyThread = task.spawn(function()
+        while AutoBuyEnabled do
+            for weather in pairs(SelectedWeather) do
+                if not AutoBuyEnabled then break end
+
+                pcall(function()
+                    PurchaseWeatherRemote:InvokeServer(weather)
+
+                    Rayfield:Notify({
+                        Title = "Weather Purchased",
+                        Content = "Activated " .. weather,
+                        Duration = 4
+                    })
+                end)
+
+                -- small delay antar weather (anti spam)
+                task.wait(3)
+            end
+
+            -- tunggu duration default (15 menit)
+            task.wait(WEATHER_DURATION)
+        end
+    end)
+end
+
+local function stopAutoBuy()
+    AutoBuyEnabled = false
+    AutoBuyThread = nil
+end
+
+-- =========================
+-- TOGGLE AUTO BUY
+-- =========================
+FarmTab:CreateToggle({
+    Name = "⚡ Auto Buy Weather",
+    CurrentValue = false,
+    Callback = function(value)
+        AutoBuyEnabled = value
+
+        if value then
+            if countSelected() == 0 then
+                Rayfield:Notify({
+                    Title = "Auto Buy Weather",
+                    Content = "Select at least 1 weather first",
+                    Duration = 4
+                })
+                AutoBuyEnabled = false
+                return
+            end
+
+            startAutoBuy()
+
+            Rayfield:Notify({
+                Title = "Auto Buy Weather",
+                Content = "Auto Buy ENABLED",
+                Duration = 4
+            })
+        else
+            stopAutoBuy()
+
+            Rayfield:Notify({
+                Title = "Auto Buy Weather",
+                Content = "Auto Buy DISABLED",
+                Duration = 4
+            })
+        end
     end
 })
 -- ====== TELEPORT TAB (from dev1.lua) ======
