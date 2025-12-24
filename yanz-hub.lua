@@ -985,6 +985,111 @@ MiscTab:CreateToggle({
         })
     end
 })
+-- =========================
+-- HIDE NAME (RAYFIELD)
+-- =========================
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local HiddenObjects = {}
+local HideNameEnabled = false
+
+local function hideName(character)
+    for _, obj in ipairs(character:GetDescendants()) do
+        if obj:IsA("BillboardGui") then
+            if obj.Enabled then
+                HiddenObjects[obj] = true
+                obj.Enabled = false
+            end
+        elseif obj:IsA("Humanoid") then
+            HiddenObjects[obj] = obj.DisplayDistanceType
+            obj.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        end
+    end
+end
+
+local function restoreName()
+    for obj, state in pairs(HiddenObjects) do
+        if obj and obj.Parent then
+            if obj:IsA("BillboardGui") then
+                obj.Enabled = true
+            elseif obj:IsA("Humanoid") then
+                obj.DisplayDistanceType = state
+            end
+        end
+    end
+    table.clear(HiddenObjects)
+end
+
+local function applyHideName()
+    if HideNameEnabled and LocalPlayer.Character then
+        hideName(LocalPlayer.Character)
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    char:WaitForChild("Humanoid")
+    task.wait(0.5)
+    applyHideName()
+end)
+
+-- =========================
+-- RAYFIELD TOGGLE
+-- =========================
+MiscTab:CreateToggle({
+    Name = "🙈 Hide Name",
+    CurrentValue = false,
+    Flag = "HideName",
+    Callback = function(value)
+        HideNameEnabled = value
+        if value then
+            applyHideName()
+        else
+            restoreName()
+        end
+    end
+})
+-- =========================
+-- UNLIMITED ZOOM (RAYFIELD)
+-- =========================
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local defaultMinZoom = LocalPlayer.CameraMinZoomDistance
+local defaultMaxZoom = LocalPlayer.CameraMaxZoomDistance
+
+local UnlimitedZoomEnabled = false
+
+local function applyZoom()
+    if UnlimitedZoomEnabled then
+        LocalPlayer.CameraMinZoomDistance = 0.5
+        LocalPlayer.CameraMaxZoomDistance = 9999
+    else
+        LocalPlayer.CameraMinZoomDistance = defaultMinZoom
+        LocalPlayer.CameraMaxZoomDistance = defaultMaxZoom
+    end
+end
+
+-- jaga supaya tidak reset saat respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    applyZoom()
+end)
+
+-- =========================
+-- RAYFIELD TOGGLE
+-- =========================
+MiscTab:CreateToggle({
+    Name = "🔭 Unlimited Zoom",
+    CurrentValue = false,
+    Flag = "UnlimitedZoom",
+    Callback = function(value)
+        UnlimitedZoomEnabled = value
+        applyZoom()
+    end
+})
 local FarmTab = Window:CreateTab("⭐ Auto Event Farm", nil)
 
 FarmTab:CreateSection ("🌠 Event Fish")
@@ -1213,91 +1318,84 @@ FarmTab:CreateSection("🌦️ Auto Buy Weather")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local PurchaseWeatherRemote =
-    ReplicatedStorage:WaitForChild("Packages")
+local PurchaseWeatherRemote = ReplicatedStorage
+    :WaitForChild("Packages")
     :WaitForChild("_Index")
     :WaitForChild("sleitnick_net@0.2.0")
     :WaitForChild("net")
     :WaitForChild("RF/PurchaseWeatherEvent")
 
+-- default 15 menit
 local WEATHER_DURATION = 900
 
-local WeatherList = { "Storm", "Cloudy", "Snow", "Wind", "Radiant" }
-local SelectedWeather = {}
+local weatherActive = {
+    Storm = false,
+    Cloudy = false,
+    Snow = false,
+    Wind = false,
+    Radiant = false
+}
+
 local AutoBuyEnabled = false
 
-local function getSelectedList()
-    local t = {}
-    for w in pairs(SelectedWeather) do
-        table.insert(t, w)
-    end
-    return t
+local function autoBuyWeather(weatherType)
+    task.spawn(function()
+        while AutoBuyEnabled and weatherActive[weatherType] do
+            pcall(function()
+                PurchaseWeatherRemote:InvokeServer(weatherType)
+
+                Rayfield:Notify({
+                    Title = "Auto Buy Weather",
+                    Content = "Purchased: " .. weatherType,
+                    Duration = 3
+                })
+            end)
+
+            task.wait(WEATHER_DURATION)
+        end
+    end)
 end
 
+-- =========================
+-- DROPDOWN MULTI SELECT
+-- =========================
 FarmTab:CreateDropdown({
     Name = "Select Weather (Max 3)",
-    Options = WeatherList,
+    Options = { "Storm", "Cloudy", "Snow", "Wind", "Radiant" },
     CurrentOption = {},
     MultiSelection = true,
     Callback = function(selected)
         pcall(function()
-            SelectedWeather = {}
+            -- reset semua
+            for k in pairs(weatherActive) do
+                weatherActive[k] = false
+            end
 
             if #selected > 3 then
                 Rayfield:Notify({
                     Title = "Limit",
-                    Content = "Max 3 weather only",
+                    Content = "Maximum 3 weather only",
                     Duration = 3
                 })
                 return
             end
 
-            for _, w in ipairs(selected) do
-                SelectedWeather[w] = true
+            for _, weather in ipairs(selected) do
+                weatherActive[weather] = true
+                autoBuyWeather(weather)
             end
         end)
     end
 })
 
-task.spawn(function()
-    while true do
-        if AutoBuyEnabled then
-            local list = getSelectedList()
-            if #list == 0 then
-                AutoBuyEnabled = false
-            end
-
-            for _, weather in ipairs(list) do
-                if not AutoBuyEnabled then break end
-
-                pcall(function()
-                    PurchaseWeatherRemote:InvokeServer(weather)
-                end)
-
-                task.wait(3)
-            end
-
-            task.wait(WEATHER_DURATION)
-        else
-            task.wait(1)
-        end
-    end
-end)
-
+-- =========================
+-- TOGGLE
+-- =========================
 FarmTab:CreateToggle({
     Name = "⚡ Auto Buy Weather",
     CurrentValue = false,
     Callback = function(value)
         pcall(function()
-            if value and next(SelectedWeather) == nil then
-                Rayfield:Notify({
-                    Title = "Auto Buy Weather",
-                    Content = "Select weather first",
-                    Duration = 3
-                })
-                return
-            end
-
             AutoBuyEnabled = value
 
             Rayfield:Notify({
@@ -1321,7 +1419,6 @@ FarmTab:CreateParagraph({
         "• Auto Buy mengikuti duration default (15 menit)"
 })
 -- ====== TELEPORT TAB (from dev1.lua) ======
-
 local TeleportTab = Window:CreateTab("🌍 Teleport", nil)
 TeleportTab:CreateSection("📍 Locations")
 
@@ -1332,14 +1429,15 @@ end
 table.sort(LocationNames)
 
 TeleportTab:CreateDropdown({
-    Name = "Select Location",
+    Name = "Select Island",
     Options = LocationNames,
-    CurrentOption = nil,
-    Callback = function(locationName)
-        if not locationName then return end
+    CurrentOption = LocationNames[1], -- ⚠️ JANGAN NIL
+    Callback = function(selected)
+        -- Rayfield kirim STRING (single dropdown)
+        if type(selected) ~= "string" then return end
 
         pcall(function()
-            local cf = LOCATIONS[locationName]
+            local cf = LOCATIONS[selected]
             if not cf then return end
 
             local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -1349,7 +1447,7 @@ TeleportTab:CreateDropdown({
 
             Rayfield:Notify({
                 Title = "Teleport",
-                Content = "Done teleport to " .. locationName,
+                Content = "Teleported to " .. selected,
                 Duration = 4
             })
         end)
@@ -1412,6 +1510,73 @@ TeleportTab:CreateButton({
         end
     end
 })
+-- =========================
+-- TELEPORT TO PLAYER (USERNAME)
+-- =========================
+
+local function getUsernameList()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            table.insert(list, p.Name) -- USERNAME
+        end
+    end
+    table.sort(list)
+    return list
+end
+
+local function teleportToPlayer(username)
+    local targetPlayer = Players:FindFirstChild(username)
+    if not targetPlayer then return end
+
+    local myChar = LocalPlayer.Character
+    local targetChar = targetPlayer.Character
+
+    if not myChar or not targetChar then return end
+
+    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+
+    if myHRP and targetHRP then
+        myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 0, 3)
+
+        Rayfield:Notify({
+            Title = "Teleport",
+            Content = "Teleported to " .. username,
+            Duration = 4
+        })
+    end
+end
+
+local PlayerDropdown
+
+PlayerDropdown = TeleportTab:CreateDropdown({
+    Name = "🧍 Teleport To Player",
+    Options = getUsernameList(),
+    CurrentOption = {},
+    Callback = function(selected)
+        if typeof(selected) == "table" then
+            selected = selected[1]
+        end
+        if selected then
+            teleportToPlayer(selected)
+        end
+    end
+})
+
+local function refreshPlayerDropdown()
+    if PlayerDropdown then
+        PlayerDropdown:Refresh(getUsernameList())
+    end
+end
+
+Players.PlayerAdded:Connect(function()
+    task.delay(0.3, refreshPlayerDropdown)
+end)
+
+Players.PlayerRemoving:Connect(function()
+    task.delay(0.3, refreshPlayerDropdown)
+end)
 -- ====== SETTINGS TAB ======
 local SettingsTab = Window:CreateTab("⚙️ Settings", 4483362458)
 
