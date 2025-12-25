@@ -1316,84 +1316,6 @@ FarmTab:CreateToggle({
 -- ===============================
 
 -- =========================
--- REMOTE
--- =========================
-local PurchaseWeatherRemote = ReplicatedStorage
-    :WaitForChild("Packages")
-    :WaitForChild("_Index")
-    :WaitForChild("sleitnick_net@0.2.0")
-    :WaitForChild("net")
-    :WaitForChild("RF/PurchaseWeatherEvent")
-
--- =========================
--- CONFIG
--- =========================
-local WEATHER_DURATION = 900 -- 15 menit
-local WeatherList = { "Storm", "Cloudy", "Snow", "Wind", "Radiant" }
-
--- =========================
--- STATE
--- =========================
-local SelectedWeather = {}   -- dari dropdown
-local WeatherActive = {}    -- yang sedang auto buy
-local AutoBuyEnabled = false
-local AutoBuyThread = nil
-
--- =========================
--- HELPER
--- =========================
-local function randomDelay(min, max)
-    return math.random(min * 100, max * 100) / 100
-end
-
-local function stopAllWeather()
-    for k in pairs(WeatherActive) do
-        WeatherActive[k] = false
-    end
-end
-
--- =========================
--- AUTO BUY LOOP
--- =========================
-local function startAutoBuy()
-    if AutoBuyThread then return end
-
-    AutoBuyThread = task.spawn(function()
-        while AutoBuyEnabled do
-            for _, weather in ipairs(SelectedWeather) do
-                if not AutoBuyEnabled then break end
-
-                WeatherActive[weather] = true
-
-                pcall(function()
-                    PurchaseWeatherRemote:InvokeServer(weather)
-
-                    Rayfield:Notify({
-                        Title = "Auto Buy Weather",
-                        Content = "Activated " .. weather,
-                        Duration = 4
-                    })
-                end)
-
-                task.wait(3) -- anti spam antar weather
-            end
-
-            -- tunggu durasi default
-            local waitTime = WEATHER_DURATION + randomDelay(1, 5)
-            task.wait(waitTime)
-        end
-
-        AutoBuyThread = nil
-    end)
-end
-
-local function stopAutoBuy()
-    AutoBuyEnabled = false
-    stopAllWeather()
-    AutoBuyThread = nil
-end
-
--- =========================
 -- UI SECTION
 -- =========================
 FarmTab:CreateSection("🌦️ Auto Buy Weather")
@@ -1401,60 +1323,59 @@ FarmTab:CreateSection("🌦️ Auto Buy Weather")
 -- =========================
 -- DROPDOWN (SELECT WEATHER)
 -- =========================
-local WeatherDropdown = FarmTab:CreateDropdown({
-    Name = "Select Weather",
-    Options = WeatherList,
-    CurrentOption = {},
-    MultiSelection = true,
-    Callback = function(selected)
-        SelectedWeather = selected
+local weatherActive = {}
+local weatherData = {
+    ["Storm"] = { duration = 900 },
+    ["Cloudy"] = { duration = 900 },
+    ["Snow"] = { duration = 900 },
+    ["Wind"] = { duration = 900 },
+    ["Radiant"] = { duration = 900 }
+}
 
-        if #selected > 0 then
-            Rayfield:Notify({
-                Title = "Weather Selected",
-                Content = table.concat(selected, ", "),
-                Duration = 3
-            })
+local function randomDelay(min, max)
+    return math.random(min * 100, max * 100) / 100
+end
+
+local function autoBuyWeather(weatherType)
+    local purchaseRemote = ReplicatedStorage:WaitForChild("Packages")
+        :WaitForChild("_Index")
+        :WaitForChild("sleitnick_net@0.2.0")
+        :WaitForChild("net")
+        :WaitForChild("RF/PurchaseWeatherEvent")
+
+    task.spawn(function()
+        while weatherActive[weatherType] do
+            pcall(function()
+                purchaseRemote:InvokeServer(weatherType)
+                NotifySuccess("Weather Purchased", "Successfully activated " .. weatherType)
+
+                task.wait(weatherData[weatherType].duration)
+
+                local randomWait = randomDelay(1, 5)
+                NotifyInfo("Waiting...", "Delay before next purchase: " .. tostring(randomWait) .. "s")
+                task.wait(randomWait)
+            end)
         end
-    end
-})
+    end)
+end
 
--- =========================
--- TOGGLE AUTO BUY
--- =========================
-FarmTab:CreateToggle({
-    Name = "⚡ Auto Buy Weather",
-    CurrentValue = false,
-    Flag = "AutoBuyWeather",
-    Callback = function(value)
-        AutoBuyEnabled = value
-
-        if value then
-            if #SelectedWeather == 0 then
-                Rayfield:Notify({
-                    Title = "Auto Buy Weather",
-                    Content = "Select at least 1 weather first",
-                    Duration = 4
-                })
-                AutoBuyEnabled = false
-                return
+local WeatherDropdown = FarmTab:CreateDropdown({
+    Title = "Auto Buy Weather",
+    Values = { "Storm", "Cloudy", "Snow", "Wind", "Radiant" },
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selected)
+        for weatherType, active in pairs(weatherActive) do
+            if active and not table.find(selected, weatherType) then
+                weatherActive[weatherType] = false
             end
-
-            startAutoBuy()
-
-            Rayfield:Notify({
-                Title = "Auto Buy Weather",
-                Content = "Enabled for: " .. table.concat(SelectedWeather, ", "),
-                Duration = 4
-            })
-        else
-            stopAutoBuy()
-
-            Rayfield:Notify({
-                Title = "Auto Buy Weather",
-                Content = "Disabled",
-                Duration = 4
-            })
+        end
+        for _, weatherType in pairs(selected) do
+            if not weatherActive[weatherType] then
+                weatherActive[weatherType] = true
+                autoBuyWeather(weatherType)
+            end
         end
     end
 })
