@@ -1311,75 +1311,75 @@ FarmTab:CreateToggle({
         end
     end
 })
--- ===============================
--- 🌦️ AUTO BUY WEATHER (RAYFIELD)
--- ===============================
+-- =========================
+-- AUTO BUY WEATHER (RAYFIELD SAFE)
+-- =========================
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- =========================
--- UI SECTION
--- =========================
-FarmTab:CreateSection("🌦️ Auto Buy Weather")
-
--- =========================
--- DROPDOWN (SELECT WEATHER)
--- =========================
 local weatherActive = {}
-local weatherData = {
-    ["Storm"] = { duration = 900 },
-    ["Cloudy"] = { duration = 900 },
-    ["Snow"] = { duration = 900 },
-    ["Wind"] = { duration = 900 },
-    ["Radiant"] = { duration = 900 }
-}
+local weatherDuration = 900 -- 15 menit default
 
-local function randomDelay(min, max)
-    return math.random(min * 100, max * 100) / 100
-end
+local PurchaseWeatherRemote = ReplicatedStorage
+    :WaitForChild("Packages")
+    :WaitForChild("_Index")
+    :WaitForChild("sleitnick_net@0.2.0")
+    :WaitForChild("net")
+    :WaitForChild("RF/PurchaseWeatherEvent")
 
 local function autoBuyWeather(weatherType)
-    local purchaseRemote = ReplicatedStorage:WaitForChild("Packages")
-        :WaitForChild("_Index")
-        :WaitForChild("sleitnick_net@0.2.0")
-        :WaitForChild("net")
-        :WaitForChild("RF/PurchaseWeatherEvent")
-
     task.spawn(function()
         while weatherActive[weatherType] do
-            pcall(function()
-                purchaseRemote:InvokeServer(weatherType)
-                NotifySuccess("Weather Purchased", "Successfully activated " .. weatherType)
-
-                task.wait(weatherData[weatherType].duration)
-
-                local randomWait = randomDelay(1, 5)
-                NotifyInfo("Waiting...", "Delay before next purchase: " .. tostring(randomWait) .. "s")
-                task.wait(randomWait)
+            local ok, err = pcall(function()
+                PurchaseWeatherRemote:InvokeServer(weatherType)
             end)
+
+            if ok then
+                Rayfield:Notify({
+                    Title = "Weather Purchased",
+                    Content = "Activated " .. weatherType,
+                    Duration = 3
+                })
+            end
+
+            -- tunggu durasi weather
+            local t = 0
+            while t < weatherDuration and weatherActive[weatherType] do
+                task.wait(1)
+                t += 1
+            end
+
+            -- delay kecil anti spam
+            task.wait(math.random(1, 3))
         end
     end)
 end
 
-local WeatherDropdown = FarmTab:CreateDropdown({
-    Title = "Auto Buy Weather",
-    Values = { "Storm", "Cloudy", "Snow", "Wind", "Radiant" },
-    Value = {},
-    Multi = true,
-    AllowNone = true,
+-- =========================
+-- DROPDOWN
+-- =========================
+FarmTab:CreateDropdown({
+    Name = "🌦️ Auto Buy Weather",
+    Options = { "Storm", "Cloudy", "Snow", "Wind", "Radiant" },
+    CurrentOption = {},
+    MultipleOptions = true,
+
     Callback = function(selected)
-        for weatherType, active in pairs(weatherActive) do
-            if active and not table.find(selected, weatherType) then
-                weatherActive[weatherType] = false
+        -- STOP yang tidak dipilih
+        for weather in pairs(weatherActive) do
+            if not table.find(selected, weather) then
+                weatherActive[weather] = nil
             end
         end
-        for _, weatherType in pairs(selected) do
-            if not weatherActive[weatherType] then
-                weatherActive[weatherType] = true
-                autoBuyWeather(weatherType)
+
+        -- START yang dipilih
+        for _, weather in ipairs(selected) do
+            if not weatherActive[weather] then
+                weatherActive[weather] = true
+                autoBuyWeather(weather)
             end
         end
     end
 })
-
 -- ===============================
 -- INFO
 -- ===============================
