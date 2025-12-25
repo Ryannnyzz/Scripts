@@ -1314,10 +1314,10 @@ FarmTab:CreateToggle({
 -- ===============================
 -- 🌦️ AUTO BUY WEATHER (RAYFIELD)
 -- ===============================
-FarmTab:CreateSection("🌦️ Auto Buy Weather")
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
+-- =========================
+-- REMOTE
+-- =========================
 local PurchaseWeatherRemote = ReplicatedStorage
     :WaitForChild("Packages")
     :WaitForChild("_Index")
@@ -1325,85 +1325,137 @@ local PurchaseWeatherRemote = ReplicatedStorage
     :WaitForChild("net")
     :WaitForChild("RF/PurchaseWeatherEvent")
 
--- default 15 menit
-local WEATHER_DURATION = 900
+-- =========================
+-- CONFIG
+-- =========================
+local WEATHER_DURATION = 900 -- 15 menit
+local WeatherList = { "Storm", "Cloudy", "Snow", "Wind", "Radiant" }
 
-local weatherActive = {
-    Storm = false,
-    Cloudy = false,
-    Snow = false,
-    Wind = false,
-    Radiant = false
-}
-
+-- =========================
+-- STATE
+-- =========================
+local SelectedWeather = {}   -- dari dropdown
+local WeatherActive = {}    -- yang sedang auto buy
 local AutoBuyEnabled = false
+local AutoBuyThread = nil
 
-local function autoBuyWeather(weatherType)
-    task.spawn(function()
-        while AutoBuyEnabled and weatherActive[weatherType] do
-            pcall(function()
-                PurchaseWeatherRemote:InvokeServer(weatherType)
+-- =========================
+-- HELPER
+-- =========================
+local function randomDelay(min, max)
+    return math.random(min * 100, max * 100) / 100
+end
 
-                Rayfield:Notify({
-                    Title = "Auto Buy Weather",
-                    Content = "Purchased: " .. weatherType,
-                    Duration = 3
-                })
-            end)
-
-            task.wait(WEATHER_DURATION)
-        end
-    end)
+local function stopAllWeather()
+    for k in pairs(WeatherActive) do
+        WeatherActive[k] = false
+    end
 end
 
 -- =========================
--- DROPDOWN MULTI SELECT
+-- AUTO BUY LOOP
 -- =========================
-FarmTab:CreateDropdown({
-    Name = "Select Weather (Max 3)",
-    Options = { "Storm", "Cloudy", "Snow", "Wind", "Radiant" },
+local function startAutoBuy()
+    if AutoBuyThread then return end
+
+    AutoBuyThread = task.spawn(function()
+        while AutoBuyEnabled do
+            for _, weather in ipairs(SelectedWeather) do
+                if not AutoBuyEnabled then break end
+
+                WeatherActive[weather] = true
+
+                pcall(function()
+                    PurchaseWeatherRemote:InvokeServer(weather)
+
+                    Rayfield:Notify({
+                        Title = "Auto Buy Weather",
+                        Content = "Activated " .. weather,
+                        Duration = 4
+                    })
+                end)
+
+                task.wait(3) -- anti spam antar weather
+            end
+
+            -- tunggu durasi default
+            local waitTime = WEATHER_DURATION + randomDelay(1, 5)
+            task.wait(waitTime)
+        end
+
+        AutoBuyThread = nil
+    end)
+end
+
+local function stopAutoBuy()
+    AutoBuyEnabled = false
+    stopAllWeather()
+    AutoBuyThread = nil
+end
+
+-- =========================
+-- UI SECTION
+-- =========================
+FarmTab:CreateSection("🌦️ Auto Buy Weather")
+
+-- =========================
+-- DROPDOWN (SELECT WEATHER)
+-- =========================
+local WeatherDropdown = FarmTab:CreateDropdown({
+    Name = "Select Weather",
+    Options = WeatherList,
     CurrentOption = {},
     MultiSelection = true,
     Callback = function(selected)
-        pcall(function()
-            -- reset semua
-            for k in pairs(weatherActive) do
-                weatherActive[k] = false
-            end
+        SelectedWeather = selected
 
-            if #selected > 3 then
-                Rayfield:Notify({
-                    Title = "Limit",
-                    Content = "Maximum 3 weather only",
-                    Duration = 3
-                })
-                return
-            end
-
-            for _, weather in ipairs(selected) do
-                weatherActive[weather] = true
-                autoBuyWeather(weather)
-            end
-        end)
+        if #selected > 0 then
+            Rayfield:Notify({
+                Title = "Weather Selected",
+                Content = table.concat(selected, ", "),
+                Duration = 3
+            })
+        end
     end
 })
 
 -- =========================
--- TOGGLE
+-- TOGGLE AUTO BUY
 -- =========================
 FarmTab:CreateToggle({
     Name = "⚡ Auto Buy Weather",
     CurrentValue = false,
+    Flag = "AutoBuyWeather",
     Callback = function(value)
-        pcall(function()
-            AutoBuyEnabled = value
+        AutoBuyEnabled = value
+
+        if value then
+            if #SelectedWeather == 0 then
+                Rayfield:Notify({
+                    Title = "Auto Buy Weather",
+                    Content = "Select at least 1 weather first",
+                    Duration = 4
+                })
+                AutoBuyEnabled = false
+                return
+            end
+
+            startAutoBuy()
 
             Rayfield:Notify({
                 Title = "Auto Buy Weather",
-                Content = value and "ENABLED" or "DISABLED",
-                Duration = 3
+                Content = "Enabled for: " .. table.concat(SelectedWeather, ", "),
+                Duration = 4
             })
-        end)
+        else
+            stopAutoBuy()
+
+            Rayfield:Notify({
+                Title = "Auto Buy Weather",
+                Content = "Disabled",
+                Duration = 4
+            })
+        end
     end
 })
 
@@ -1422,35 +1474,67 @@ FarmTab:CreateParagraph({
 local TeleportTab = Window:CreateTab("🌍 Teleport", nil)
 TeleportTab:CreateSection("📍 Locations")
 
-local LocationNames = {}
-for name in pairs(LOCATIONS) do
-    table.insert(LocationNames, name)
-end
-table.sort(LocationNames)
+-- =========================
+-- BUILD SORTED LOCATION LIST
+-- =========================
+local locationNames = {}
 
+for name in pairs(LOCATIONS) do
+    table.insert(locationNames, name)
+end
+
+table.sort(locationNames)
+
+-- =========================
+-- SAFE TELEPORT FUNCTION
+-- =========================
+local function teleportTo(locationName)
+    local cf = LOCATIONS[locationName]
+    if not cf then
+        Rayfield:Notify({
+            Title = "Teleport Failed",
+            Content = "Location not found",
+            Duration = 4
+        })
+        return
+    end
+
+    local characters = workspace:WaitForChild("Characters", 5)
+    if not characters then return end
+
+    local char = characters:FindFirstChild(LocalPlayer.Name)
+    if not char then return end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+        or char:WaitForChild("HumanoidRootPart", 3)
+
+    if not hrp then return end
+
+    hrp.CFrame = cf + Vector3.new(0, 5, 0)
+end
+
+-- =========================
+-- RAYFIELD DROPDOWN
+-- =========================
 TeleportTab:CreateDropdown({
     Name = "Select Island",
-    Options = LocationNames,
-    CurrentOption = LocationNames[1], -- ⚠️ JANGAN NIL
+    Options = locationNames,
+    CurrentOption = nil,
+    MultipleOptions = false,
+
     Callback = function(selected)
-        -- Rayfield kirim STRING (single dropdown)
-        if type(selected) ~= "string" then return end
+        -- Rayfield dropdown return TABLE
+        local locationName = selected[1]
+        if not locationName then return end
 
-        pcall(function()
-            local cf = LOCATIONS[selected]
-            if not cf then return end
+        teleportTo(locationName)
 
-            local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-            local hrp = char:WaitForChild("HumanoidRootPart")
-
-            hrp.CFrame = cf + Vector3.new(0, 5, 0)
-
-            Rayfield:Notify({
-                Title = "Teleport",
-                Content = "Teleported to " .. selected,
-                Duration = 4
-            })
-        end)
+        Rayfield:Notify({
+            Title = "Teleport",
+            Content = "Teleported to " .. locationName,
+            Duration = 4,
+            Image = 4483362458
+        })
     end
 })
 
