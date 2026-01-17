@@ -1,40 +1,54 @@
--- ===============================
--- AUTO REJOIN SERVER (NO RAYFIELD)
--- ===============================
+-- ==============================
+-- AUTO RECONNECT (ORIGINAL)
+-- ==============================
 
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
-local TweenService = game:GetService("TweenService")
-local CoreGui = game:GetService("CoreGui")
+local StarterGui = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
+local PlaceId = game.PlaceId
 
--- ===============================
--- SERVER INFO
--- ===============================
-_G.ServerInfo = {
-    PlaceId = game.PlaceId,
-    JobId = game.JobId,
-    IsPrivate = game.PrivateServerId ~= ""
-}
+-- ==============================
+-- NOTIFICATION
+-- ==============================
+pcall(function()
+    StarterGui:SetCore("SendNotification", {
+        Title = "Auto Reconnect",
+        Text = "Loaded",
+        Duration = 4
+    })
+end)
 
--- ===============================
--- ACHIEVEMENT NOTIFICATION UI
--- ===============================
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AchievementNotify"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = CoreGui
+-- ==============================
+-- RECONNECT FUNCTION
+-- ==============================
+local reconnecting = false
+local function reconnect()
+    if reconnecting then return end
+    reconnecting = true
+    task.wait(2)
+    TeleportService:Teleport(PlaceId, LocalPlayer)
+end
 
-local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 320, 0, 80)
-Frame.Position = UDim2.new(1, 20, 1, -120)
-Frame.AnchorPoint = Vector2.new(1, 1)
-Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-Frame.BorderSizePixel = 0
-Frame.Parent = ScreenGui
-Frame.BackgroundTransparency = 1
+-- ==============================
+-- TELEPORT FAILED
+-- ==============================
+LocalPlayer.OnTeleport:Connect(function(state)
+    if state == Enum.TeleportState.Failed then
+        reconnect()
+    end
+end)
+
+-- ==============================
+-- DISCONNECT / KICK DETECT
+-- ==============================
+GuiService.ErrorMessageChanged:Connect(function(msg)
+    if msg ~= "" then
+        reconnect()
+    end
+end)Frame.BackgroundTransparency = 1
 
 Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 10)
 
