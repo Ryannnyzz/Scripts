@@ -1,4 +1,3 @@
-
 -- ==============================
 -- AUTO RECONNECT (NO WEBHOOK)
 -- ==============================
@@ -20,8 +19,8 @@ local FIRST_JOB_ID = game.JobId
 -- ANTI DOUBLE EXEC (DELTA SAFE)
 -- ==============================
 if CoreGui:FindFirstChild("RJ_EXECUTED") then
-warn("Reconnect script already running")
-return
+    warn("Reconnect script already running")
+    return
 end
 
 local flag = Instance.new("Folder")
@@ -32,9 +31,64 @@ flag.Parent = CoreGui
 -- NOTIFICATION
 -- ==============================
 local function notify(text)
-pcall(function()
-StarterGui:SetCore("SendNotification", {
-Title = "Reconnect",
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "Reconnect",
+            Text = text,
+            Duration = 5
+        })
+    end)
+end
+
+notify("Loaded! Auto Reconnect Active")
+
+-- ==============================
+-- RECONNECT FUNCTION
+-- ==============================
+local reconnecting = false
+
+local function reconnect(reason)
+    if reconnecting then return end
+    reconnecting = true
+
+    notify("Reconnecting...\nReason: " .. tostring(reason))
+
+    task.wait(2)
+
+    -- reconnect ke SERVER PERTAMA
+    TeleportService:TeleportToPlaceInstance(
+        PLACE_ID,
+        FIRST_JOB_ID,
+        LocalPlayer
+    )
+end
+
+-- ==============================
+-- TELEPORT FAILED
+-- ==============================
+LocalPlayer.OnTeleport:Connect(function(state)
+    if state == Enum.TeleportState.Failed then
+        reconnect("Teleport Failed")
+    end
+end)
+
+-- ==============================
+-- DISCONNECT / MULTI DEVICE
+-- ==============================
+GuiService.ErrorMessageChanged:Connect(function(msg)
+    if msg and msg ~= "" then
+        reconnect(msg)
+    end
+end)
+
+-- ==============================
+-- SERVER SHUTDOWN DETECT
+-- ==============================
+RunService.Heartbeat:Connect(function()
+    if #Players:GetPlayers() <= 1 then
+        reconnect("Server Shutdown")
+    end
+end)Title = "Reconnect",
 Text = text,
 Duration = 5
 })
