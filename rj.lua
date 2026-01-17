@@ -1,397 +1,145 @@
 -- ===============================
--- SIMPLE AUTO RECONNECT
--- NO AUTOEXEC REQUIRED
+-- AUTO REJOIN SERVER (NO RAYFIELD)
 -- ===============================
 
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
-local RunService = game:GetService("RunService")
-local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
-local PLACE_ID = game.PlaceId
-local JOB_ID = game.JobId
 
-local reconnecting = false
+-- ===============================
+-- SERVER INFO
+-- ===============================
+_G.ServerInfo = {
+    PlaceId = game.PlaceId,
+    JobId = game.JobId,
+    IsPrivate = game.PrivateServerId ~= ""
+}
 
-local function notify(text)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "Reconnect",
-            Text = text,
-            Duration = 4
-        })
-    end)
+-- ===============================
+-- ACHIEVEMENT NOTIFICATION UI
+-- ===============================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AchievementNotify"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 320, 0, 80)
+Frame.Position = UDim2.new(1, 20, 1, -120)
+Frame.AnchorPoint = Vector2.new(1, 1)
+Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Frame.BorderSizePixel = 0
+Frame.Parent = ScreenGui
+Frame.BackgroundTransparency = 1
+
+Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -20, 0, 28)
+Title.Position = UDim2.new(0, 10, 0, 8)
+Title.Text = "Loaded!"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 16
+Title.BackgroundTransparency = 1
+Title.TextXAlignment = Left
+Title.Parent = Frame
+
+local Desc = Instance.new("TextLabel")
+Desc.Size = UDim2.new(1, -20, 0, 28)
+Desc.Position = UDim2.new(0, 10, 0, 38)
+Desc.Text = ""
+Desc.TextColor3 = Color3.fromRGB(200, 200, 200)
+Desc.Font = Enum.Font.Gotham
+Desc.TextSize = 13
+Desc.BackgroundTransparency = 1
+Desc.TextXAlignment = Left
+Desc.Parent = Frame
+
+local function Notify(title, desc, duration)
+    duration = duration or 4
+    Title.Text = title
+    Desc.Text = desc
+
+    Frame.BackgroundTransparency = 0.15
+    TweenService:Create(
+        Frame,
+        TweenInfo.new(0.4, Enum.EasingStyle.Quint),
+        { Position = UDim2.new(1, -20, 1, -120) }
+    ):Play()
+
+    task.wait(duration)
+
+    TweenService:Create(
+        Frame,
+        TweenInfo.new(0.4, Enum.EasingStyle.Quint),
+        { Position = UDim2.new(1, 20, 1, -120) }
+    ):Play()
+
+    task.wait(0.4)
+    Frame.BackgroundTransparency = 1
 end
 
-local function reconnect(reason)
-    if reconnecting then return end
-    reconnecting = true
-
-    notify("Reconnecting...")
-
-    task.delay(2, function()
-        pcall(function()
-            TeleportService:TeleportToPlaceInstance(
-                PLACE_ID,
-                JOB_ID,
-                LocalPlayer
-            )
-        end)
-    end)
-end
-
-notify("Loaded")
-
--- Teleport fail
-LocalPlayer.OnTeleport:Connect(function(state)
-    if state == Enum.TeleportState.Failed then
-        reconnect("Teleport Failed")
-    end
-end)
-
--- Disconnect / multi device
-GuiService.ErrorMessageChanged:Connect(function(msg)
-    if msg and msg ~= "" then
-        reconnect(msg)
-    end
-end)
-
--- Server shutdown
-RunService.Heartbeat:Connect(function()
-    if #Players:GetPlayers() <= 1 then
-        reconnect("Server Shutdown")
-    end
-end)            Text = text,
-            Duration = 5
-        })
-    end)
-end
-
-notify("Loaded! Auto Reconnect Active")
-
--- ==============================
--- RECONNECT FUNCTION
--- ==============================
-local reconnecting = false
-
-local function reconnect(reason)
-    if reconnecting then return end
-    reconnecting = true
-
-    notify("Reconnecting...\nReason: " .. tostring(reason))
-
-    task.wait(2)
-
-    -- reconnect ke SERVER PERTAMA
-    TeleportService:TeleportToPlaceInstance(
-        PLACE_ID,
-        FIRST_JOB_ID,
-        LocalPlayer
-    )
-end
-
--- ==============================
--- TELEPORT FAILED
--- ==============================
-LocalPlayer.OnTeleport:Connect(function(state)
-    if state == Enum.TeleportState.Failed then
-        reconnect("Teleport Failed")
-    end
-end)
-
--- ==============================
--- DISCONNECT / MULTI DEVICE
--- ==============================
-GuiService.ErrorMessageChanged:Connect(function(msg)
-    if msg and msg ~= "" then
-        reconnect(msg)
-    end
-end)
-
--- ==============================
--- SERVER SHUTDOWN DETECT
--- ==============================
-RunService.Heartbeat:Connect(function()
-    if #Players:GetPlayers() <= 1 then
-        reconnect("Server Shutdown")
-    end
-end)Title = "Reconnect",
-Text = text,
-Duration = 5
-})
-end)
-end
-
-notify("Loaded! Auto Reconnect Active")
-
--- ==============================
--- RECONNECT FUNCTION
--- ==============================
-local reconnecting = false
-
-local function reconnect(reason)
-if reconnecting then return end
-reconnecting = true
-
-notify("Reconnecting...\nReason: " .. tostring(reason))  
-
-task.wait(2)  
-
--- reconnect ke SERVER PERTAMA  
-TeleportService:TeleportToPlaceInstance(  
-    PLACE_ID,  
-    FIRST_JOB_ID,  
-    LocalPlayer  
+-- ===============================
+-- INITIAL NOTIFY
+-- ===============================
+Notify(
+    "Loaded!",
+    _G.ServerInfo.IsPrivate and "Private Server Detected" or "Public Server Detected"
 )
 
-end
-
--- ==============================
--- TELEPORT FAILED
--- ==============================
-LocalPlayer.OnTeleport:Connect(function(state)
-if state == Enum.TeleportState.Failed then
-reconnect("Teleport Failed")
-end
-end)
-
--- ==============================
--- DISCONNECT / MULTI DEVICE
--- ==============================
-GuiService.ErrorMessageChanged:Connect(function(msg)
-if msg and msg ~= "" then
-reconnect(msg)
-end
-end)
-
--- ==============================
--- SERVER SHUTDOWN DETECT
--- ==============================
-RunService.Heartbeat:Connect(function()
-if #Players:GetPlayers() <= 1 then
-reconnect("Server Shutdown")
-end
-end)local GuiService = game:GetService("GuiService")
-local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
-local StarterGui = game:GetService("StarterGui")
-local HttpService = game:GetService("HttpService")
-
-local LP = Players.LocalPlayer
-local PLACE_ID = game.PlaceId
-local JOB_ID = game.JobId
-local CONFIG_PATH = "autoexec/delta_reconnect_config.json"
-
--- =========================
--- ANTI DOUBLE EXEC
--- =========================
-if CoreGui:FindFirstChild("RJ_EXECUTED") then return end
-local flag = Instance.new("Folder")
-flag.Name = "RJ_EXECUTED"
-flag.Parent = CoreGui
-
--- =========================
--- LOAD CONFIG
--- =========================
-local enabled = false
-pcall(function()
-    if isfile(CONFIG_PATH) then
-        enabled = HttpService:JSONDecode(readfile(CONFIG_PATH)).enabled
-    end
-end)
-
--- =========================
--- UI CONFIRM PANEL
--- =========================
-local gui = Instance.new("ScreenGui", CoreGui)
-gui.Name = "ReconnectPanel"
-
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.fromScale(0.35, 0.25)
-frame.Position = UDim2.fromScale(0.325, 0.35)
-frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Draggable = true
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0,12)
-
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.fromScale(1,0.35)
-title.Text = "Enable Auto Reconnect?"
-title.TextScaled = true
-title.TextColor3 = Color3.new(1,1,1)
-title.BackgroundTransparency = 1
-
-local function button(txt, pos, callback)
-    local b = Instance.new("TextButton", frame)
-    b.Size = UDim2.fromScale(0.4,0.3)
-    b.Position = pos
-    b.Text = txt
-    b.TextScaled = true
-    b.BackgroundColor3 = Color3.fromRGB(40,40,40)
-    b.TextColor3 = Color3.new(1,1,1)
-    Instance.new("UICorner", b)
-    b.MouseButton1Click:Connect(callback)
-end
-
-button("YES", UDim2.fromScale(0.05,0.55), function()
-    writefile(CONFIG_PATH, HttpService:JSONEncode({ enabled = true }))
-    enabled = true
-    gui:Destroy()
-end)
-
-button("NO", UDim2.fromScale(0.55,0.55), function()
-    writefile(CONFIG_PATH, HttpService:JSONEncode({ enabled = false }))
-    enabled = false
-    gui:Destroy()
-end)
-
--- =========================
--- NOTIFY
--- =========================
-local function notify(t)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "Reconnect",
-            Text = t,
-            Duration = 4
-        })
-    end)
-end
-
-notify("Reconnect loaded")
-
--- =========================
--- RECONNECT LOGIC
--- =========================
-local reconnecting = false
-local function reconnect(reason)
-    if not enabled or reconnecting then return end
-    reconnecting = true
-    notify("Reconnecting...\n"..tostring(reason))
+-- ===============================
+-- REJOIN FUNCTION
+-- ===============================
+local function RejoinServer()
     task.wait(2)
-    TeleportService:TeleportToPlaceInstance(PLACE_ID, JOB_ID, LP)
-end
 
-LP.OnTeleport:Connect(function(s)
-    if s == Enum.TeleportState.Failed then
-        reconnect("Teleport Failed")
-    end
-end)
-
-GuiService.ErrorMessageChanged:Connect(function(msg)
-    if msg ~= "" then
-        reconnect(msg)
-    end
-end)
-
-RunService.Heartbeat:Connect(function()
-    if #Players:GetPlayers() <= 1 then
-        reconnect("Server Shutdown")
-    end
-end)
-    ]])
-end
-
--- default config (sekali)
-if not isfile(CONFIG_PATH) then
-    writefile(CONFIG_PATH, HttpService:JSONEncode({ enabled = true }))
-end
-
--- flag supaya rejoin cuma sekali (install time)
-if not isfile(FLAG_PATH) then
-    writefile(FLAG_PATH, "installed")
-    task.delay(1, function()
-        TeleportService:TeleportToPlaceInstance(PLACE_ID, JOB_ID, LP)
-    end)
-endlocal Players = game:GetService("Players")
-local TeleportService = game:GetService("TeleportService")
-local GuiService = game:GetService("GuiService")
-local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
-local StarterGui = game:GetService("StarterGui")
-local HttpService = game:GetService("HttpService")
-
-local LP = Players.LocalPlayer
-local PLACE_ID = game.PlaceId
-local JOB_ID = game.JobId
-local CONFIG_PATH = "Autoexecute/delta_reconnect_config.json"
-
--- =========================
--- ANTI DOUBLE EXEC
--- =========================
-if CoreGui:FindFirstChild("RJ_EXECUTED") then return end
-local flag = Instance.new("Folder")
-flag.Name = "RJ_EXECUTED"
-flag.Parent = CoreGui
-
--- =========================
--- LOAD CONFIG
--- =========================
-local enabled = false
-pcall(function()
-    if isfile(CONFIG_PATH) then
-        enabled = HttpService:JSONDecode(readfile(CONFIG_PATH)).enabled
-    end
-end)
-
--- =========================
--- UI PANEL
--- =========================
-local gui = Instance.new("ScreenGui", CoreGui)
-gui.Name = "ReconnectPanel"
-
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.fromScale(0.35, 0.25)
-frame.Position = UDim2.fromScale(0.325, 0.35)
-frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Draggable = true
-
-local corner = Instance.new("UICorner", frame)
-corner.CornerRadius = UDim.new(0,12)
-
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.fromScale(1,0.35)
-title.Text = "Enable Auto Reconnect?"
-title.TextColor3 = Color3.new(1,1,1)
-title.BackgroundTransparency = 1
-title.TextScaled = true
-
-local function button(txt, pos, callback)
-    local b = Instance.new("TextButton", frame)
-    b.Size = UDim2.fromScale(0.4,0.3)
-    b.Position = pos
-    b.Text = txt
-    b.TextScaled = true
-    b.BackgroundColor3 = Color3.fromRGB(40,40,40)
-    b.TextColor3 = Color3.new(1,1,1)
-    Instance.new("UICorner", b)
-    b.MouseButton1Click:Connect(callback)
-end
-
-button("YES", UDim2.fromScale(0.05,0.55), function()
-    writefile(CONFIG_PATH, HttpService:JSONEncode({enabled = true}))
-    enabled = true
-    gui:Destroy()
-end)
-
-button("NO", UDim2.fromScale(0.55,0.55), function()
-    writefile(CONFIG_PATH, HttpService:JSONEncode({enabled = false}))
-    enabled = false
-    gui:Destroy()
-end)
-
--- =========================
--- NOTIFY
--- =========================
-local function notify(t)
     pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "Reconnect",
+        if _G.ServerInfo.IsPrivate then
+            TeleportService:TeleportToPrivateServer(
+                _G.ServerInfo.PlaceId,
+                game.PrivateServerId,
+                { LocalPlayer }
+            )
+        else
+            TeleportService:TeleportToPlaceInstance(
+                _G.ServerInfo.PlaceId,
+                _G.ServerInfo.JobId,
+                LocalPlayer
+            )
+        end
+    end)
+end
+
+-- ===============================
+-- DETECT DISCONNECT / ERROR
+-- ===============================
+GuiService.ErrorMessageChanged:Connect(function()
+    Notify("Reconnecting...", "Connection lost")
+    RejoinServer()
+end)
+
+-- Teleport fail / account collision
+LocalPlayer.OnTeleport:Connect(function(state)
+    if state == Enum.TeleportState.Failed then
+        Notify("Reconnecting...", "Teleport failed")
+        RejoinServer()
+    end
+end)
+
+-- Backup safety loop
+task.spawn(function()
+    while task.wait(10) do
+        if not LocalPlayer.Parent then
+            RejoinServer()
+            break
+        end
+    end
+end)  Title = "Reconnect",
             Text = t,
             Duration = 4
         })
