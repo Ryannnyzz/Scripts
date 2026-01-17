@@ -12,7 +12,7 @@ local LocalPlayer = Players.LocalPlayer
 local PlaceId = game.PlaceId
 local JobId = game.JobId
 
-local WEBHOOK_URL = "ISI_WEBHOOK_DISCORD_KAMU"
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1457043568223977606/Ikc8Hk35FsKTfgL-cIxYk9jNCzKbbQRLhpjZtoWvqF8dFJ_Ovsh0E1ZW7un5hZ1arPVk"
 
 -- ==============================
 -- SEND WEBHOOK
