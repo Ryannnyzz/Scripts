@@ -1,40 +1,60 @@
 -- ==============================
--- SIMPLE AUTO RECONNECT (NO LOADSTRING)
+-- AUTO RECONNECT + AUTO EXECUTE
+-- LOADSTRING VERSION
 -- ==============================
 
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
-local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
-local PLACE_ID = game.PlaceId
-local FIRST_JOB_ID = game.JobId
+local PlaceId = game.PlaceId
 
 -- ==============================
--- QUEUE SCRIPT AGAIN (NO LOADSTRING)
+-- AUTO QUEUE (PENTING)
 -- ==============================
 if queue_on_teleport then
     queue_on_teleport([[
-        -- AUTO RECONNECT SCRIPT (QUEUED)
-        local Players = game:GetService("Players")
-        local TeleportService = game:GetService("TeleportService")
-        local GuiService = game:GetService("GuiService")
-        local RunService = game:GetService("RunService")
+        loadstring(game:HttpGet("RAW_LINK_KAMU_DI_SINI"))()
+    ]])
+end
 
-        local LocalPlayer = Players.LocalPlayer
-        local PLACE_ID = game.PlaceId
-        local FIRST_JOB_ID = game.JobId
+-- ==============================
+-- NOTIFY
+-- ==============================
+pcall(function()
+    game.StarterGui:SetCore("SendNotification", {
+        Title = "Reconnect",
+        Text = "Loaded!",
+        Duration = 5
+    })
+end)
 
-        local function notify(text)
-            pcall(function()
-                game.StarterGui:SetCore("SendNotification", {
-                    Title = "Reconnect System",
-                    Text = text,
-                    Duration = 4
-                })
-            end)
-        end
+-- ==============================
+-- RECONNECT FUNCTION
+-- ==============================
+local function reconnect()
+    task.wait(2)
+    TeleportService:Teleport(PlaceId, LocalPlayer)
+end
+
+-- ==============================
+-- DISCONNECT DETECT
+-- ==============================
+GuiService.ErrorMessageChanged:Connect(function(msg)
+    if msg ~= "" then
+        reconnect()
+    end
+end)
+
+-- ==============================
+-- TELEPORT FAIL
+-- ==============================
+LocalPlayer.OnTeleport:Connect(function(state)
+    if state == Enum.TeleportState.Failed then
+        reconnect()
+    end
+end)        end
 
         notify("Reconnected!")
 
