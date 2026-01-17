@@ -1,367 +1,175 @@
--- ==============================
--- AUTO EXECUTE SESSION (NO AUTOEXEC FOLDER)
--- ==============================
+-- ======================================
+-- AUTO SAVE + AUTO REJOIN + UI CONFIRM
+-- ======================================
 
-local HttpService = game:GetService("HttpService")
-local SESSION_FILE = "delta_reconnect_session.json"
-
--- save session once
-if writefile and readfile then
-    if not isfile(SESSION_FILE) then
-        writefile(SESSION_FILE, HttpService:JSONEncode({
-            gameId = game.PlaceId,
-            enabled = true
-        }))
-    end
-end
-
--- ==============================
--- AUTO RESTORE ON TELEPORT
--- ==============================
-
-pcall(function()
-    game:GetService("Players").LocalPlayer.OnTeleport:Connect(function(state)
-        if state == Enum.TeleportState.Started then
-            if readfile and isfile and isfile(SESSION_FILE) then
-                queue_on_teleport(readfile(SESSION_FILE))
-            end
-        end
-    end)
-end)
-
--- ==============================
--- AUTO RECONNECT (NO WEBHOOK)
--- ==============================
-
---// Services
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local StarterGui = game:GetService("StarterGui")
+local HttpService = game:GetService("HttpService")
 
---// Player & Server Info
-local LocalPlayer = Players.LocalPlayer
+local LP = Players.LocalPlayer
 local PLACE_ID = game.PlaceId
-local FIRST_JOB_ID = game.JobId
+local JOB_ID = game.JobId
 
--- ==============================
--- ANTI DOUBLE EXEC (DELTA SAFE)
--- ==============================
-if CoreGui:FindFirstChild("RJ_EXECUTED") then
-    return
-end
+-- =========================
+-- PATH
+-- =========================
+local FOLDER = "Autoexecute"
+local SCRIPT_PATH = FOLDER .. "/delta_reconnect.lua"
+local CONFIG_PATH = FOLDER .. "/delta_reconnect_config.json"
 
+-- =========================
+-- SAVE SCRIPT TO AUTOEXEC
+-- =========================
+if writefile and isfolder then
+    if not isfolder(FOLDER) then
+        makefolder(FOLDER)
+    end
+
+    writefile(SCRIPT_PATH, [[
+-- ======================================
+-- AUTO RECONNECT (AUTOEXEC)
+-- ======================================
+
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local StarterGui = game:GetService("StarterGui")
+local HttpService = game:GetService("HttpService")
+
+local LP = Players.LocalPlayer
+local PLACE_ID = game.PlaceId
+local JOB_ID = game.JobId
+local CONFIG_PATH = "Autoexecute/delta_reconnect_config.json"
+
+-- =========================
+-- ANTI DOUBLE EXEC
+-- =========================
+if CoreGui:FindFirstChild("RJ_EXECUTED") then return end
 local flag = Instance.new("Folder")
 flag.Name = "RJ_EXECUTED"
 flag.Parent = CoreGui
 
--- ==============================
--- NOTIFICATION
--- ==============================
-local function notify(text)
+-- =========================
+-- LOAD CONFIG
+-- =========================
+local enabled = false
+pcall(function()
+    if isfile(CONFIG_PATH) then
+        enabled = HttpService:JSONDecode(readfile(CONFIG_PATH)).enabled
+    end
+end)
+
+-- =========================
+-- UI PANEL
+-- =========================
+local gui = Instance.new("ScreenGui", CoreGui)
+gui.Name = "ReconnectPanel"
+
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.fromScale(0.35, 0.25)
+frame.Position = UDim2.fromScale(0.325, 0.35)
+frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+
+local corner = Instance.new("UICorner", frame)
+corner.CornerRadius = UDim.new(0,12)
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.fromScale(1,0.35)
+title.Text = "Enable Auto Reconnect?"
+title.TextColor3 = Color3.new(1,1,1)
+title.BackgroundTransparency = 1
+title.TextScaled = true
+
+local function button(txt, pos, callback)
+    local b = Instance.new("TextButton", frame)
+    b.Size = UDim2.fromScale(0.4,0.3)
+    b.Position = pos
+    b.Text = txt
+    b.TextScaled = true
+    b.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    b.TextColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", b)
+    b.MouseButton1Click:Connect(callback)
+end
+
+button("YES", UDim2.fromScale(0.05,0.55), function()
+    writefile(CONFIG_PATH, HttpService:JSONEncode({enabled = true}))
+    enabled = true
+    gui:Destroy()
+end)
+
+button("NO", UDim2.fromScale(0.55,0.55), function()
+    writefile(CONFIG_PATH, HttpService:JSONEncode({enabled = false}))
+    enabled = false
+    gui:Destroy()
+end)
+
+-- =========================
+-- NOTIFY
+-- =========================
+local function notify(t)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
             Title = "Reconnect",
-            Text = text,
-            Duration = 5
-        })
-    end)
-end
-
-notify("Loaded! Auto Reconnect (Session Mode)")
-
--- ==============================
--- RECONNECT FUNCTION
--- ==============================
-local reconnecting = false
-
-local function reconnect(reason)
-    if reconnecting then return end
-    reconnecting = true
-
-    notify("Reconnecting...\nReason: " .. tostring(reason))
-    task.wait(2)
-
-    TeleportService:TeleportToPlaceInstance(
-        PLACE_ID,
-        FIRST_JOB_ID,
-        LocalPlayer
-    )
-end
-
--- ==============================
--- TELEPORT FAILED
--- ==============================
-LocalPlayer.OnTeleport:Connect(function(state)
-    if state == Enum.TeleportState.Failed then
-        reconnect("Teleport Failed")
-    end
-end)
-
--- ==============================
--- DISCONNECT / MULTI DEVICE
--- ==============================
-GuiService.ErrorMessageChanged:Connect(function(msg)
-    if msg and msg ~= "" then
-        reconnect(msg)
-    end
-end)
-
--- ==============================
--- SERVER SHUTDOWN DETECT
--- ==============================
-RunService.Heartbeat:Connect(function()
-    if #Players:GetPlayers() <= 1 then
-        reconnect("Server Shutdown")
-    end
-end)    task.wait(2)
-    TeleportService:Teleport(PlaceId, LocalPlayer)
-end
-
--- ==============================
--- DISCONNECT DETECT
--- ==============================
-GuiService.ErrorMessageChanged:Connect(function(msg)
-    if msg ~= "" then
-        reconnect()
-    end
-end)
-
--- ==============================
--- TELEPORT FAIL
--- ==============================
-LocalPlayer.OnTeleport:Connect(function(state)
-    if state == Enum.TeleportState.Failed then
-        reconnect()
-    end
-end)        end
-
-        notify("Reconnected!")
-
-        local reconnecting = false
-        local function reconnect()
-            if reconnecting then return end
-            reconnecting = true
-            notify("Reconnecting...")
-            task.wait(2)
-
-            pcall(function()
-                TeleportService:TeleportToPlaceInstance(PLACE_ID, FIRST_JOB_ID, LocalPlayer)
-            end)
-
-            task.delay(5, function()
-                pcall(function()
-                    TeleportService:Teleport(PLACE_ID, LocalPlayer)
-                end)
-            end)
-        end
-
-        GuiService.ErrorMessageChanged:Connect(function(msg)
-            if msg and msg ~= "" then
-                reconnect()
-            end
-        end)
-
-        LocalPlayer.OnTeleport:Connect(function(state)
-            if state == Enum.TeleportState.Failed then
-                reconnect()
-            end
-        end)
-
-        RunService.Heartbeat:Connect(function()
-            if #Players:GetPlayers() <= 0 then
-                reconnect()
-            end
-        end)
-    ]])
-end
-
--- ==============================
--- NOTIFY
--- ==============================
-pcall(function()
-    game.StarterGui:SetCore("SendNotification", {
-        Title = "Reconnect System",
-        Text = "Loaded!",
-        Duration = 4
-    })
-end)
-
--- ==============================
--- MAIN RECONNECT LOGIC
--- ==============================
-local reconnecting = false
-
-local function reconnect()
-    if reconnecting then return end
-    reconnecting = true
-
-    pcall(function()
-        game.StarterGui:SetCore("SendNotification", {
-            Title = "Reconnect System",
-            Text = "Reconnecting...",
+            Text = t,
             Duration = 4
         })
     end)
-
-    task.wait(2)
-
-    pcall(function()
-        TeleportService:TeleportToPlaceInstance(PLACE_ID, FIRST_JOB_ID, LocalPlayer)
-    end)
-
-    task.delay(5, function()
-        pcall(function()
-            TeleportService:Teleport(PLACE_ID, LocalPlayer)
-        end)
-    end)
 end
 
--- ==============================
--- DETECTORS
--- ==============================
-GuiService.ErrorMessageChanged:Connect(function(msg)
-    if msg and msg ~= "" then
-        reconnect()
-    end
-end)
+notify("Reconnect loaded")
 
-LocalPlayer.OnTeleport:Connect(function(state)
-    if state == Enum.TeleportState.Failed then
-        reconnect()
-    end
-end)
-
-RunService.Heartbeat:Connect(function()
-    if #Players:GetPlayers() <= 0 then
-        reconnect()
-    end
-end)--// ===============================
---// NOTIFY
---// ===============================
-local function notify(txt)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "Reconnect",
-            Text = txt,
-            Duration = 5
-        })
-    end)
-end
-
---// ===============================
---// WEBHOOK SEND (DELTA SAFE)
---// ===============================
-local function sendWebhook(embed)
-    local payload = {
-        content = "@everyone",
-        embeds = {embed}
-    }
-
-    pcall(function()
-        HttpService:PostAsync(
-            getgenv().webhookexecUrl,
-            HttpService:JSONEncode(payload),
-            Enum.HttpContentType.ApplicationJson
-        )
-    end)
-end
-
---// ===============================
---// EXECUTION LOG
---// ===============================
-local gameName = MarketplaceService:GetProductInfo(PLACE_ID).Name
-local ping = tonumber(Stats.Network.ServerStatsItem["Data Ping"]:GetValueString():match("%d+")) or "N/A"
-
-sendWebhook({
-    title = "🚀 Script Execution Detected",
-    description = "*Reconnect script executed successfully*",
-    color = 0x3498db,
-    fields = {
-        {
-            name = "📜 Script Info",
-            value = "```Script: "..getgenv().whscript..
-                    "\nTime: "..os.date("%Y-%m-%d %H:%M:%S").."```",
-            inline = false
-        },
-        {
-            name = "👤 Player",
-            value = "```Username: "..player.Name..
-                    "\nUserId: "..player.UserId.."```",
-            inline = true
-        },
-        {
-            name = "🎮 Game",
-            value = "```"..gameName..
-                    "\nPlaceId: "..PLACE_ID..
-                    "\nJobId: "..FIRST_JOB_ID.."```",
-            inline = false
-        },
-        {
-            name = "📡 Network",
-            value = "```Ping: "..ping.." ms```",
-            inline = true
-        },
-        {
-            name = "🔁 Join Script",
-            value = "```lua\nTeleportService:TeleportToPlaceInstance("..
-                    PLACE_ID..", '"..FIRST_JOB_ID.."', player)\n```",
-            inline = false
-        }
-    },
-    footer = {
-        text = "Delta Reconnect Logger"
-    },
-    timestamp = DateTime.now():ToIsoDate()
-})
-
-notify("Loaded!")
-
---// ===============================
---// RECONNECT FUNCTION
---// ===============================
+-- =========================
+-- RECONNECT LOGIC
+-- =========================
+local reconnecting = false
 local function reconnect(reason)
-    sendWebhook({
-        title = "🔄 Reconnecting",
-        description = "**Reason:** "..reason..
-            "\n**JobId:** "..FIRST_JOB_ID,
-        color = 0xF1C40F,
-        footer = {text = "Auto Reconnect"}
-    })
-
+    if not enabled or reconnecting then return end
+    reconnecting = true
+    notify("Reconnecting...\n"..tostring(reason))
     task.wait(2)
-    TeleportService:TeleportToPlaceInstance(
-        PLACE_ID,
-        FIRST_JOB_ID,
-        player
-    )
+    TeleportService:TeleportToPlaceInstance(PLACE_ID, JOB_ID, LP)
 end
 
---// ===============================
---// DISCONNECT DETECT
---// ===============================
-GuiService.ErrorMessageChanged:Connect(function(msg)
-    if msg and msg ~= "" then
-        reconnect(msg)
-    end
-end)
-
---// ===============================
---// TELEPORT FAIL
---// ===============================
-player.OnTeleport:Connect(function(state)
-    if state == Enum.TeleportState.Failed then
+LP.OnTeleport:Connect(function(s)
+    if s == Enum.TeleportState.Failed then
         reconnect("Teleport Failed")
     end
 end)
 
---// ===============================
---// SERVER SHUTDOWN
---// ===============================
+GuiService.ErrorMessageChanged:Connect(function(msg)
+    if msg ~= "" then
+        reconnect(msg)
+    end
+end)
+
 RunService.Heartbeat:Connect(function()
     if #Players:GetPlayers() <= 1 then
         reconnect("Server Shutdown")
     end
+end)
+    ]])
+end
+
+-- =========================
+-- SAVE DEFAULT CONFIG
+-- =========================
+if writefile then
+    writefile(CONFIG_PATH, HttpService:JSONEncode({ enabled = true }))
+end
+
+-- =========================
+-- IMMEDIATE REJOIN LAST JOB
+-- =========================
+task.delay(1, function()
+    TeleportService:TeleportToPlaceInstance(PLACE_ID, JOB_ID, LP)
 end)
