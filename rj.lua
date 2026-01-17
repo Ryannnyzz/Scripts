@@ -1,40 +1,122 @@
 -- ==============================
--- AUTO RECONNECT + AUTO EXECUTE
--- LOADSTRING VERSION
+-- AUTO EXECUTE SESSION (NO AUTOEXEC FOLDER)
 -- ==============================
 
-local Players = game:GetService("Players")
-local TeleportService = game:GetService("TeleportService")
-local GuiService = game:GetService("GuiService")
+local HttpService = game:GetService("HttpService")
+local SESSION_FILE = "delta_reconnect_session.json"
 
-local LocalPlayer = Players.LocalPlayer
-local PlaceId = game.PlaceId
-
--- ==============================
--- AUTO QUEUE (PENTING)
--- ==============================
-if queue_on_teleport then
-    queue_on_teleport([[
-        loadstring(game:HttpGet("RAW_LINK_KAMU_DI_SINI"))()
-    ]])
+-- save session once
+if writefile and readfile then
+    if not isfile(SESSION_FILE) then
+        writefile(SESSION_FILE, HttpService:JSONEncode({
+            gameId = game.PlaceId,
+            enabled = true
+        }))
+    end
 end
 
 -- ==============================
--- NOTIFY
+-- AUTO RESTORE ON TELEPORT
 -- ==============================
+
 pcall(function()
-    game.StarterGui:SetCore("SendNotification", {
-        Title = "Reconnect",
-        Text = "Loaded!",
-        Duration = 5
-    })
+    game:GetService("Players").LocalPlayer.OnTeleport:Connect(function(state)
+        if state == Enum.TeleportState.Started then
+            if readfile and isfile and isfile(SESSION_FILE) then
+                queue_on_teleport(readfile(SESSION_FILE))
+            end
+        end
+    end)
 end)
+
+-- ==============================
+-- AUTO RECONNECT (NO WEBHOOK)
+-- ==============================
+
+--// Services
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local StarterGui = game:GetService("StarterGui")
+
+--// Player & Server Info
+local LocalPlayer = Players.LocalPlayer
+local PLACE_ID = game.PlaceId
+local FIRST_JOB_ID = game.JobId
+
+-- ==============================
+-- ANTI DOUBLE EXEC (DELTA SAFE)
+-- ==============================
+if CoreGui:FindFirstChild("RJ_EXECUTED") then
+    return
+end
+
+local flag = Instance.new("Folder")
+flag.Name = "RJ_EXECUTED"
+flag.Parent = CoreGui
+
+-- ==============================
+-- NOTIFICATION
+-- ==============================
+local function notify(text)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "Reconnect",
+            Text = text,
+            Duration = 5
+        })
+    end)
+end
+
+notify("Loaded! Auto Reconnect (Session Mode)")
 
 -- ==============================
 -- RECONNECT FUNCTION
 -- ==============================
-local function reconnect()
+local reconnecting = false
+
+local function reconnect(reason)
+    if reconnecting then return end
+    reconnecting = true
+
+    notify("Reconnecting...\nReason: " .. tostring(reason))
     task.wait(2)
+
+    TeleportService:TeleportToPlaceInstance(
+        PLACE_ID,
+        FIRST_JOB_ID,
+        LocalPlayer
+    )
+end
+
+-- ==============================
+-- TELEPORT FAILED
+-- ==============================
+LocalPlayer.OnTeleport:Connect(function(state)
+    if state == Enum.TeleportState.Failed then
+        reconnect("Teleport Failed")
+    end
+end)
+
+-- ==============================
+-- DISCONNECT / MULTI DEVICE
+-- ==============================
+GuiService.ErrorMessageChanged:Connect(function(msg)
+    if msg and msg ~= "" then
+        reconnect(msg)
+    end
+end)
+
+-- ==============================
+-- SERVER SHUTDOWN DETECT
+-- ==============================
+RunService.Heartbeat:Connect(function()
+    if #Players:GetPlayers() <= 1 then
+        reconnect("Server Shutdown")
+    end
+end)    task.wait(2)
     TeleportService:Teleport(PlaceId, LocalPlayer)
 end
 
