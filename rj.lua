@@ -1,40 +1,69 @@
--- ==============================
--- AUTO RECONNECT (NO WEBHOOK)
--- ==============================
+-- ===============================
+-- SIMPLE AUTO RECONNECT
+-- NO AUTOEXEC REQUIRED
+-- ===============================
 
---// Services
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
 local StarterGui = game:GetService("StarterGui")
 
---// Player & Server Info
 local LocalPlayer = Players.LocalPlayer
 local PLACE_ID = game.PlaceId
-local FIRST_JOB_ID = game.JobId
+local JOB_ID = game.JobId
 
--- ==============================
--- ANTI DOUBLE EXEC (DELTA SAFE)
--- ==============================
-if CoreGui:FindFirstChild("RJ_EXECUTED") then
-    warn("Reconnect script already running")
-    return
-end
+local reconnecting = false
 
-local flag = Instance.new("Folder")
-flag.Name = "RJ_EXECUTED"
-flag.Parent = CoreGui
-
--- ==============================
--- NOTIFICATION
--- ==============================
 local function notify(text)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
             Title = "Reconnect",
             Text = text,
+            Duration = 4
+        })
+    end)
+end
+
+local function reconnect(reason)
+    if reconnecting then return end
+    reconnecting = true
+
+    notify("Reconnecting...")
+
+    task.delay(2, function()
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(
+                PLACE_ID,
+                JOB_ID,
+                LocalPlayer
+            )
+        end)
+    end)
+end
+
+notify("Loaded")
+
+-- Teleport fail
+LocalPlayer.OnTeleport:Connect(function(state)
+    if state == Enum.TeleportState.Failed then
+        reconnect("Teleport Failed")
+    end
+end)
+
+-- Disconnect / multi device
+GuiService.ErrorMessageChanged:Connect(function(msg)
+    if msg and msg ~= "" then
+        reconnect(msg)
+    end
+end)
+
+-- Server shutdown
+RunService.Heartbeat:Connect(function()
+    if #Players:GetPlayers() <= 1 then
+        reconnect("Server Shutdown")
+    end
+end)            Text = text,
             Duration = 5
         })
     end)
