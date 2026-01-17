@@ -1,40 +1,142 @@
---// ===============================
---// CONFIG
---// ===============================
-getgenv().whscript = "Reconnect Logger"
-getgenv().webhookexecUrl = "https://discord.com/api/webhooks/1457043568223977606/Ikc8Hk35FsKTfgL-cIxYk9jNCzKbbQRLhpjZtoWvqF8dFJ_Ovsh0E1ZW7un5hZ1arPVk"
-getgenv().ExecLogSecret = false -- Delta tidak support secret
+-- ==============================
+-- SIMPLE AUTO RECONNECT (NO LOADSTRING)
+-- ==============================
 
---// ===============================
---// SERVICES
---// ===============================
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
-local StarterGui = game:GetService("StarterGui")
-local Stats = game:GetService("Stats")
-local MarketplaceService = game:GetService("MarketplaceService")
 
-local player = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
 local PLACE_ID = game.PlaceId
 local FIRST_JOB_ID = game.JobId
 
---// ===============================
---// ANTI DOUBLE EXEC (DELTA)
---// ===============================
-if CoreGui:FindFirstChild("ReconnectExec") then
-    warn("Script already executed")
-    return
+-- ==============================
+-- QUEUE SCRIPT AGAIN (NO LOADSTRING)
+-- ==============================
+if queue_on_teleport then
+    queue_on_teleport([[
+        -- AUTO RECONNECT SCRIPT (QUEUED)
+        local Players = game:GetService("Players")
+        local TeleportService = game:GetService("TeleportService")
+        local GuiService = game:GetService("GuiService")
+        local RunService = game:GetService("RunService")
+
+        local LocalPlayer = Players.LocalPlayer
+        local PLACE_ID = game.PlaceId
+        local FIRST_JOB_ID = game.JobId
+
+        local function notify(text)
+            pcall(function()
+                game.StarterGui:SetCore("SendNotification", {
+                    Title = "Reconnect System",
+                    Text = text,
+                    Duration = 4
+                })
+            end)
+        end
+
+        notify("Reconnected!")
+
+        local reconnecting = false
+        local function reconnect()
+            if reconnecting then return end
+            reconnecting = true
+            notify("Reconnecting...")
+            task.wait(2)
+
+            pcall(function()
+                TeleportService:TeleportToPlaceInstance(PLACE_ID, FIRST_JOB_ID, LocalPlayer)
+            end)
+
+            task.delay(5, function()
+                pcall(function()
+                    TeleportService:Teleport(PLACE_ID, LocalPlayer)
+                end)
+            end)
+        end
+
+        GuiService.ErrorMessageChanged:Connect(function(msg)
+            if msg and msg ~= "" then
+                reconnect()
+            end
+        end)
+
+        LocalPlayer.OnTeleport:Connect(function(state)
+            if state == Enum.TeleportState.Failed then
+                reconnect()
+            end
+        end)
+
+        RunService.Heartbeat:Connect(function()
+            if #Players:GetPlayers() <= 0 then
+                reconnect()
+            end
+        end)
+    ]])
 end
 
-local flag = Instance.new("Folder")
-flag.Name = "ReconnectExec"
-flag.Parent = CoreGui
+-- ==============================
+-- NOTIFY
+-- ==============================
+pcall(function()
+    game.StarterGui:SetCore("SendNotification", {
+        Title = "Reconnect System",
+        Text = "Loaded!",
+        Duration = 4
+    })
+end)
 
---// ===============================
+-- ==============================
+-- MAIN RECONNECT LOGIC
+-- ==============================
+local reconnecting = false
+
+local function reconnect()
+    if reconnecting then return end
+    reconnecting = true
+
+    pcall(function()
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Reconnect System",
+            Text = "Reconnecting...",
+            Duration = 4
+        })
+    end)
+
+    task.wait(2)
+
+    pcall(function()
+        TeleportService:TeleportToPlaceInstance(PLACE_ID, FIRST_JOB_ID, LocalPlayer)
+    end)
+
+    task.delay(5, function()
+        pcall(function()
+            TeleportService:Teleport(PLACE_ID, LocalPlayer)
+        end)
+    end)
+end
+
+-- ==============================
+-- DETECTORS
+-- ==============================
+GuiService.ErrorMessageChanged:Connect(function(msg)
+    if msg and msg ~= "" then
+        reconnect()
+    end
+end)
+
+LocalPlayer.OnTeleport:Connect(function(state)
+    if state == Enum.TeleportState.Failed then
+        reconnect()
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if #Players:GetPlayers() <= 0 then
+        reconnect()
+    end
+end)--// ===============================
 --// NOTIFY
 --// ===============================
 local function notify(txt)
